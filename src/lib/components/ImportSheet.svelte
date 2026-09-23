@@ -25,6 +25,11 @@
 				onclose();
 				goto('/contacts/add');
 				break;
+			case 'live':
+				toast.show(result.role === 'offer' ? t('liveOfferReceived', { name: result.contact.name }) : t('liveAnswerReceived'));
+				onclose();
+				if (result.contact.id !== currentContactId) goto(`/chat/${result.contact.id}`);
+				break;
 			case 'partial':
 				error = null;
 				toast.show(t('scanProgress', { have: result.have, total: result.total }));

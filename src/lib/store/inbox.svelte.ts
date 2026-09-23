@@ -2,12 +2,14 @@
 
 import { PartAssembler, parseEnvelope, type EnvelopeKind } from '$lib/crypto/envelope';
 import { isFileEnvelope, unwrapFileEnvelope } from '$lib/crypto/fileenvelope';
+import { live } from './live.svelte';
 import { messages, NoMatchingContactError, type ChatMessage } from './messages.svelte';
 import type { ContactRecord } from './contacts.svelte';
 
 export type ImportResult =
 	| { type: 'message'; contact: ContactRecord; message: ChatMessage }
 	| { type: 'handshake'; kind: 'offer' | 'answer'; payload: Uint8Array }
+	| { type: 'live'; contact: ContactRecord; role: 'offer' | 'answer' }
 	| { type: 'legacy'; text: string }
 	| { type: 'partial'; have: number; total: number }
 	| { type: 'unknown' }
@@ -61,14 +63,18 @@ class InboxState {
 			this.handoff = { kind, payload };
 			return { type: 'handshake', kind, payload };
 		}
-		if (kind === 'msg') return this.receiveMessage(payload);
+		if (kind === 'msg' || kind === 'conn') return this.receiveMessage(payload);
 		return { type: 'unknown' };
 	}
 
 	private async receiveMessage(payload: Uint8Array): Promise<ImportResult> {
 		try {
 			const r = await messages.receive(payload);
-			return { type: 'message', ...r };
+			if (r.plain.t === 'conn') {
+				await live.handleSignal(r.contact, r.plain);
+				return { type: 'live', contact: r.contact, role: r.plain.role };
+			}
+			return { type: 'message', contact: r.contact, message: r.message };
 		} catch (e) {
 			if (e instanceof NoMatchingContactError) return { type: 'no-contact' };
 			return { type: 'error', message: (e as Error).message };

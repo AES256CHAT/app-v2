@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import FileBubble from '$lib/components/FileBubble.svelte';
 	import ImportSheet from '$lib/components/ImportSheet.svelte';
+	import LiveSheet from '$lib/components/LiveSheet.svelte';
 	import QrShow from '$lib/components/QrShow.svelte';
 	import { b64uDecode } from '$lib/crypto/bytes';
 	import { PREFIX } from '$lib/crypto/envelope';
@@ -11,6 +12,7 @@
 	import { t } from '$lib/i18n/index.svelte';
 	import { downscaleImage, formatBytes, isImage } from '$lib/media/image';
 	import { contacts } from '$lib/store/contacts.svelte';
+	import { live } from '$lib/store/live.svelte';
 	import { messages, type ChatMessage } from '$lib/store/messages.svelte';
 	import { toast } from '$lib/store/toast.svelte';
 	import { canShare, copyText, shareOrDownload, shareText } from '$lib/transport/share';
@@ -24,6 +26,8 @@
 	let draft = $state('');
 	let busy = $state(false);
 	let showImport = $state(false);
+	let showLive = $state(false);
+	const liveStatus = $derived(live.statusOf(id));
 	let qrFor = $state<ChatMessage | null>(null);
 	let scroller: HTMLElement;
 	let fileInput: HTMLInputElement;
@@ -50,9 +54,9 @@
 		if (!body || !contact || busy) return;
 		busy = true;
 		try {
-			const msg = await messages.send(contact, body);
+			const msg = await messages.send(contact, body, live.transportFor(contact.id));
 			draft = '';
-			await deliver(msg, 'auto');
+			if (msg.status !== 'delivered') await deliver(msg, 'auto');
 		} finally {
 			busy = false;
 		}
@@ -85,7 +89,8 @@
 			const data = new Uint8Array(await blob.arrayBuffer());
 			const mime = blob.type || file.type || 'application/octet-stream';
 			const name = blob !== file && mime === 'image/jpeg' ? file.name.replace(/\.[^.]+$/, '') + '.jpg' : file.name;
-			const msg = await messages.sendFile(contact, data, { name, mime, size: data.length });
+			const msg = await messages.sendFile(contact, data, { name, mime, size: data.length }, live.transportFor(contact.id));
+			if (msg.status === 'delivered') return;
 			const att = await messages.attachment(msg.id);
 			if (!att?.envelope || !msg.envelopeFile) return;
 			const how = await shareOrDownload(att.envelope, msg.envelopeFile, FILE_MIME);
@@ -107,6 +112,8 @@
 				return t('statusShared');
 			case 'downloaded':
 				return t('statusDownloaded');
+			case 'delivered':
+				return t('statusDelivered');
 			case 'encrypted':
 				return t('statusEncrypted');
 			default:
@@ -138,6 +145,9 @@
 			<div class="font-semibold">{contact?.name ?? '…'}{#if contact?.verified}<span class="text-accent ml-1 text-xs">✔</span>{/if}</div>
 			<div class="text-muted text-xs">{ephemeral ? t('chatEphemeral') : t('chatPersist')}</div>
 		</a>
+		<button class="text-sm" onclick={() => (showLive = true)} aria-label={t('liveTitle')} data-testid="chat-live">
+			{#if liveStatus === 'connected'}<span class="text-accent" data-testid="live-dot">●</span>{:else if liveStatus !== 'idle'}<span class="text-warn animate-pulse">●</span>{/if} ⚡
+		</button>
 		<button class="text-sm" onclick={() => (showImport = true)} aria-label={t('inboxTitle')} data-testid="chat-import">📥</button>
 	</header>
 
@@ -157,7 +167,7 @@
 						<span>{fmtTime(m.ts)}</span>
 						{#if m.dir === 'out'}
 							<span>· 🔒 {statusLabel(m)}</span>
-							{#if !m.file}
+							{#if !m.file && m.status !== 'delivered'}
 								<button class="underline" onclick={() => deliver(m, 'copy')}>{t('copy')}</button>
 								{#if canShare()}<button class="underline" onclick={() => deliver(m, 'share')}>{t('share')}</button>{/if}
 								<button class="underline" onclick={() => (qrFor = m)}>QR</button>
@@ -186,6 +196,10 @@
 
 {#if showImport}
 	<ImportSheet onclose={() => (showImport = false)} currentContactId={id} />
+{/if}
+
+{#if showLive && contact}
+	<LiveSheet {contact} onclose={() => (showLive = false)} onimport={() => ((showLive = false), (showImport = true))} />
 {/if}
 
 {#if qrFor}

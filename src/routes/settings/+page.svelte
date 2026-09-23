@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { AuthError } from '$lib/crypto/aead';
 	import { i18n, t } from '$lib/i18n/index.svelte';
+	import { live } from '$lib/store/live.svelte';
 	import { toast } from '$lib/store/toast.svelte';
 	import { MIN_PASSPHRASE_LEN } from '$lib/vault/vault';
 	import { vault, vaultState } from '$lib/vault/vault.svelte';
@@ -90,6 +91,14 @@
 		<label class="option mt-3" class:selected={destroy}>
 			<input type="checkbox" checked={destroy} onchange={(e) => saveDestroy((e.currentTarget as HTMLInputElement).checked)} />
 			<span><b>{t('setDestroy')}</b><br /><span class="text-muted text-xs">{t('onbDestroyHint')}</span></span>
+		</label>
+	</section>
+
+	<section class="card">
+		<div class="font-medium">⚡ {t('liveTitle')}</div>
+		<label class="option mt-2" class:selected={live.stunEnabled}>
+			<input type="checkbox" checked={live.stunEnabled} onchange={(e) => live.setStun((e.currentTarget as HTMLInputElement).checked)} data-testid="stun-toggle" />
+			<span><b>{t('setStun')}</b><br /><span class="text-muted text-xs">{t('setStunHint')}</span></span>
 		</label>
 	</section>
 

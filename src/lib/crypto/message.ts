@@ -3,12 +3,14 @@
 //
 //   type 1 = text  (meta: {body, ts}, no data)
 //   type 2 = file  (meta: {name, mime, size, ts}, data = file bytes)
+//   type 3 = conn  (meta: {role, ts}, data = WebRTC session description JSON) — live signalling
 
 import { concat, utf8 } from './bytes';
 
 export type PlainText = { t: 'text'; body: string; ts: number };
 export type PlainFile = { t: 'file'; name: string; mime: string; size: number; ts: number; data: Uint8Array };
-export type Plain = PlainText | PlainFile;
+export type PlainConn = { t: 'conn'; role: 'offer' | 'answer'; sdp: string; ts: number };
+export type Plain = PlainText | PlainFile | PlainConn;
 
 export const MAX_TEXT_CHARS = 20_000;
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
@@ -25,6 +27,7 @@ export function encodePlain(p: Plain): Uint8Array {
 		if (p.body.length > MAX_TEXT_CHARS) throw new Error('message too long');
 		return frame(1, { body: p.body, ts: p.ts });
 	}
+	if (p.t === 'conn') return frame(3, { role: p.role, ts: p.ts }, utf8.encode(p.sdp));
 	if (p.data.length > MAX_FILE_BYTES) throw new Error('file too large');
 	return frame(2, { name: p.name.slice(0, MAX_NAME_CHARS), mime: p.mime, size: p.data.length, ts: p.ts }, p.data);
 }
@@ -51,6 +54,11 @@ export function decodePlain(bytes: Uint8Array): Plain {
 			ts: meta.ts,
 			data
 		};
+	}
+	if (type === 3) {
+		if ((meta.role !== 'offer' && meta.role !== 'answer') || typeof meta.ts !== 'number') throw new Error('bad conn body');
+		if (data.length > 64 * 1024) throw new Error('conn body too large');
+		return { t: 'conn', role: meta.role, sdp: utf8.decode(data), ts: meta.ts };
 	}
 	throw new Error('unknown body type');
 }

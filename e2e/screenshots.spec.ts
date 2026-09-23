@@ -124,6 +124,14 @@ for (const scheme of SCHEMES) {
 			await b.getByTestId('inbox-file-input').setInputFiles(encPath!);
 			await b.getByTestId('file-bubble').first().waitFor();
 			await shot(b, '15_chat_file_received', width, scheme);
+			// live link sheet: idle, then with an offer code
+			await a.getByTestId('chat-live').click();
+			await shot(a, '16_live_idle', width, scheme);
+			await a.getByTestId('live-offer').click();
+			await a.getByTestId('envelope-text').waitFor();
+			await a.waitForTimeout(800);
+			await shot(a, '17_live_offer', width, scheme);
+			await a.getByTestId('live-close').click();
 			await a.getByRole('link', { name: /Zurück|Back/ }).click();
 			await a.getByTestId('contact-list').waitFor();
 			await shot(a, '13_home_preview', width, scheme);

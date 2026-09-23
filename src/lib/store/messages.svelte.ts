@@ -12,7 +12,10 @@ import { ratchetDecrypt, ratchetEncrypt } from '$lib/crypto/ratchet';
 import { vault } from '$lib/vault/vault.svelte';
 import { contacts, sessionOfRecord, type ContactRecord } from './contacts.svelte';
 
-export type MsgStatus = 'encrypted' | 'copied' | 'shared' | 'downloaded' | 'received';
+export type MsgStatus = 'encrypted' | 'copied' | 'shared' | 'downloaded' | 'delivered' | 'received';
+
+/** Optional direct transport (live WebRTC link). Returns true when the bytes went out. */
+export type DirectTransport = (raw: Uint8Array) => Promise<boolean>;
 
 export interface FileInfo {
 	name: string;
@@ -135,31 +138,33 @@ class MessagesState {
 		if (this.unread[contactId]) this.unread = { ...this.unread, [contactId]: 0 };
 	}
 
-	private async encryptFor(contact: ContactRecord, plain: Plain): Promise<Uint8Array> {
+	async encryptFor(contact: ContactRecord, plain: Plain): Promise<Uint8Array> {
 		const { state, message } = await ratchetEncrypt(sessionOfRecord(contact), encodePlain(plain));
 		await contacts.saveSession(contact.id, state);
 		return message;
 	}
 
-	async send(contact: ContactRecord, body: string): Promise<ChatMessage> {
+	async send(contact: ContactRecord, body: string, direct?: DirectTransport): Promise<ChatMessage> {
 		const ts = Date.now();
 		const message = await this.encryptFor(contact, { t: 'text', body, ts });
+		const delivered = direct ? await direct(message) : false;
 		const msg: ChatMessage = {
 			id: crypto.randomUUID(),
 			contactId: contact.id,
 			dir: 'out',
 			ts,
 			body,
-			status: 'encrypted',
+			status: delivered ? 'delivered' : 'encrypted',
 			envelope: encodeEnvelope('msg', message)
 		};
 		await this.store(msg);
 		return msg;
 	}
 
-	async sendFile(contact: ContactRecord, data: Uint8Array, info: FileInfo): Promise<ChatMessage> {
+	async sendFile(contact: ContactRecord, data: Uint8Array, info: FileInfo, direct?: DirectTransport): Promise<ChatMessage> {
 		const ts = Date.now();
 		const message = await this.encryptFor(contact, { t: 'file', ...info, size: data.length, ts, data });
+		const delivered = direct ? await direct(message) : false;
 		const envelope = wrapFileEnvelope(message);
 		const msg: ChatMessage = {
 			id: crypto.randomUUID(),
@@ -167,7 +172,7 @@ class MessagesState {
 			dir: 'out',
 			ts,
 			body: '',
-			status: 'encrypted',
+			status: delivered ? 'delivered' : 'encrypted',
 			file: { ...info, size: data.length },
 			envelopeFile: envelopeFileName(ts)
 		};
@@ -176,37 +181,49 @@ class MessagesState {
 		return msg;
 	}
 
-	/** Sealed sender: try every contact's session; the ratchet's AEAD rejects all but the right one. */
-	async receive(payload: Uint8Array): Promise<{ contact: ContactRecord; message: ChatMessage }> {
+	/** Trial-decrypt against every contact and return the decoded body without storing anything. */
+	async receiveRaw(payload: Uint8Array): Promise<{ contact: ContactRecord; plain: Plain }> {
 		if (!contacts.loaded) await contacts.refresh();
 		for (const c of contacts.items) {
-			let plaintext: Uint8Array;
 			try {
 				const r = await ratchetDecrypt(sessionOfRecord(c), payload);
-				plaintext = r.plaintext;
 				await contacts.saveSession(c.id, r.state);
+				return { contact: c, plain: decodePlain(r.plaintext) };
 			} catch (e) {
 				if (e instanceof AuthError) continue;
 				if (e instanceof Error && /skipped|short/.test(e.message)) continue;
 				throw e;
 			}
-			const plain = decodePlain(plaintext);
-			await this.load(c.id);
-			const msg: ChatMessage = {
-				id: crypto.randomUUID(),
-				contactId: c.id,
-				dir: 'in',
-				ts: Date.now(),
-				body: plain.t === 'text' ? plain.body : '',
-				status: 'received',
-				...(plain.t === 'file' ? { file: { name: plain.name, mime: plain.mime, size: plain.size } } : {})
-			};
-			if (plain.t === 'file') await this.storeAttachment(msg.id, plain.data);
-			await this.store(msg);
-			this.unread = { ...this.unread, [c.id]: (this.unread[c.id] ?? 0) + 1 };
-			return { contact: c, message: msg };
 		}
 		throw new NoMatchingContactError();
+	}
+
+	/** Sealed sender: try every contact's session; the ratchet's AEAD rejects all but the right one. */
+	async receive(payload: Uint8Array): Promise<{ contact: ContactRecord; message: ChatMessage; plain: Plain }> {
+		const { contact: c, plain } = await this.receiveRaw(payload);
+		if (plain.t === 'conn') {
+			// Live-link signalling is handled by the live store; nothing to show in the thread.
+			return { contact: c, plain, message: { id: '', contactId: c.id, dir: 'in', ts: plain.ts, body: '', status: 'received' } };
+		}
+		return { contact: c, plain, message: await this.storeIncoming(c, plain) };
+	}
+
+	async storeIncoming(c: ContactRecord, plain: Plain): Promise<ChatMessage> {
+		if (plain.t === 'conn') throw new Error('not a chat message');
+		await this.load(c.id);
+		const msg: ChatMessage = {
+			id: crypto.randomUUID(),
+			contactId: c.id,
+			dir: 'in',
+			ts: Date.now(),
+			body: plain.t === 'text' ? plain.body : '',
+			status: 'received',
+			...(plain.t === 'file' ? { file: { name: plain.name, mime: plain.mime, size: plain.size } } : {})
+		};
+		if (plain.t === 'file') await this.storeAttachment(msg.id, plain.data);
+		await this.store(msg);
+		this.unread = { ...this.unread, [c.id]: (this.unread[c.id] ?? 0) + 1 };
+		return msg;
 	}
 
 	async clearContact(contactId: string): Promise<void> {
