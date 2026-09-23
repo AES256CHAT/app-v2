@@ -1,6 +1,7 @@
-// Everything that comes *into* the app as text: pasted, scanned, or read from the clipboard.
+// Everything that comes *into* the app: pasted or scanned text, clipboard, or an .aes256 file.
 
 import { PartAssembler, parseEnvelope, type EnvelopeKind } from '$lib/crypto/envelope';
+import { isFileEnvelope, unwrapFileEnvelope } from '$lib/crypto/fileenvelope';
 import { messages, NoMatchingContactError, type ChatMessage } from './messages.svelte';
 import type { ContactRecord } from './contacts.svelte';
 
@@ -43,21 +44,35 @@ class InboxState {
 		return partial ?? { type: 'unknown' };
 	}
 
+	/** An .aes256 attachment file (share target, "open with", or file picker). */
+	async importFile(file: File | Blob): Promise<ImportResult> {
+		const bytes = new Uint8Array(await file.arrayBuffer());
+		if (isFileEnvelope(bytes)) return this.receiveMessage(unwrapFileEnvelope(bytes));
+		// Maybe a text envelope saved as .txt
+		if (bytes.length < 2_000_000) {
+			const text = new TextDecoder().decode(bytes);
+			if (text.includes('🛡️') || text.includes('🔐') || text.includes('🔒')) return this.importText(text);
+		}
+		return { type: 'unknown' };
+	}
+
 	private async handleComplete(kind: EnvelopeKind, payload: Uint8Array): Promise<ImportResult> {
 		if (kind === 'offer' || kind === 'answer') {
 			this.handoff = { kind, payload };
 			return { type: 'handshake', kind, payload };
 		}
-		if (kind === 'msg') {
-			try {
-				const r = await messages.receive(payload);
-				return { type: 'message', ...r };
-			} catch (e) {
-				if (e instanceof NoMatchingContactError) return { type: 'no-contact' };
-				return { type: 'error', message: (e as Error).message };
-			}
-		}
+		if (kind === 'msg') return this.receiveMessage(payload);
 		return { type: 'unknown' };
+	}
+
+	private async receiveMessage(payload: Uint8Array): Promise<ImportResult> {
+		try {
+			const r = await messages.receive(payload);
+			return { type: 'message', ...r };
+		} catch (e) {
+			if (e instanceof NoMatchingContactError) return { type: 'no-contact' };
+			return { type: 'error', message: (e as Error).message };
+		}
 	}
 
 	takeHandoff(): { kind: 'offer' | 'answer'; payload: Uint8Array } | null {

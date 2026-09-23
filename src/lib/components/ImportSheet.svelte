@@ -65,6 +65,21 @@
 		}
 	}
 
+	let fileInput = $state<HTMLInputElement>();
+
+	async function onFile(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file) return;
+		busy = true;
+		try {
+			await handle(await inbox.importFile(file));
+		} finally {
+			busy = false;
+		}
+	}
+
 	async function onScanned(kind: EnvelopeKind, payload: Uint8Array) {
 		// QrScan already reassembled the frames; hand the complete envelope to the inbox.
 		await handle(await inbox.importText(encodeEnvelope(kind, payload, Number.MAX_SAFE_INTEGER)[0]));
@@ -72,11 +87,11 @@
 </script>
 
 <div class="fixed inset-0 z-40 flex items-end justify-center bg-black/50" role="dialog" aria-modal="true">
-	<button class="absolute inset-0 cursor-default" aria-label={t('cancel')} onclick={onclose}></button>
+	<button class="absolute inset-0 cursor-default" aria-hidden="true" tabindex="-1" onclick={onclose}></button>
 	<div class="bg-bg relative w-full max-w-xl rounded-t-3xl p-5 pb-8">
 		<div class="mb-4 flex items-center justify-between">
 			<h2 class="text-lg font-semibold">{t('inboxTitle')}</h2>
-			<button class="text-muted text-sm" onclick={onclose}>{t('cancel')}</button>
+			<button class="text-muted text-sm" onclick={onclose} data-testid="inbox-close">{t('cancel')}</button>
 		</div>
 
 		{#if mode === 'menu'}
@@ -84,6 +99,8 @@
 				<button class="item" onclick={fromClipboard} disabled={busy}>📋 {t('inboxFromClipboard')}</button>
 				<button class="item" onclick={() => (mode = 'paste')} data-testid="inbox-paste">✍️ {t('inboxPaste')}</button>
 				<button class="item" onclick={() => (mode = 'scan')}>📷 {t('inboxScan')}</button>
+				<button class="item" onclick={() => fileInput?.click()} data-testid="inbox-file">📎 {t('inboxFile')}</button>
+				<input bind:this={fileInput} type="file" class="hidden" accept=".aes256,.txt,*/*" onchange={onFile} data-testid="inbox-file-input" />
 			</div>
 		{:else if mode === 'paste'}
 			<textarea class="field h-32 w-full font-mono text-xs" bind:value={text} placeholder="🛡️MSG:…" data-testid="inbox-field"></textarea>

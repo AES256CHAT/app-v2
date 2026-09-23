@@ -1,15 +1,19 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { page } from '$app/state';
+	import FileBubble from '$lib/components/FileBubble.svelte';
 	import ImportSheet from '$lib/components/ImportSheet.svelte';
 	import QrShow from '$lib/components/QrShow.svelte';
 	import { b64uDecode } from '$lib/crypto/bytes';
 	import { PREFIX } from '$lib/crypto/envelope';
+	import { FILE_MIME } from '$lib/crypto/fileenvelope';
+	import { MAX_FILE_BYTES } from '$lib/crypto/message';
 	import { t } from '$lib/i18n/index.svelte';
+	import { downscaleImage, formatBytes, isImage } from '$lib/media/image';
 	import { contacts } from '$lib/store/contacts.svelte';
 	import { messages, type ChatMessage } from '$lib/store/messages.svelte';
 	import { toast } from '$lib/store/toast.svelte';
-	import { canShare, copyText, shareText } from '$lib/transport/share';
+	import { canShare, copyText, shareOrDownload, shareText } from '$lib/transport/share';
 	import { vault } from '$lib/vault/vault.svelte';
 
 	const id = $derived(page.params.id ?? '');
@@ -22,6 +26,7 @@
 	let showImport = $state(false);
 	let qrFor = $state<ChatMessage | null>(null);
 	let scroller: HTMLElement;
+	let fileInput: HTMLInputElement;
 
 	onMount(async () => {
 		if (!contacts.loaded) await contacts.refresh();
@@ -68,12 +73,40 @@
 		toast.show(msg.envelope && msg.envelope.length > 1 ? t('chatCopiedParts', { n: msg.envelope.length }) : t('chatCopied'));
 	}
 
+	async function onFilePicked(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file || !contact || busy) return;
+		busy = true;
+		try {
+			const blob = isImage(file.type) ? await downscaleImage(file) : file;
+			if (blob.size > MAX_FILE_BYTES) return toast.show(t('fileTooLarge', { max: formatBytes(MAX_FILE_BYTES) }));
+			const data = new Uint8Array(await blob.arrayBuffer());
+			const mime = blob.type || file.type || 'application/octet-stream';
+			const name = blob !== file && mime === 'image/jpeg' ? file.name.replace(/\.[^.]+$/, '') + '.jpg' : file.name;
+			const msg = await messages.sendFile(contact, data, { name, mime, size: data.length });
+			const att = await messages.attachment(msg.id);
+			if (!att?.envelope || !msg.envelopeFile) return;
+			const how = await shareOrDownload(att.envelope, msg.envelopeFile, FILE_MIME);
+			if (how === 'shared') await messages.setStatus(msg, 'shared');
+			if (how === 'downloaded') {
+				await messages.setStatus(msg, 'downloaded');
+				toast.show(t('fileDownloaded', { name: msg.envelopeFile }));
+			}
+		} finally {
+			busy = false;
+		}
+	}
+
 	function statusLabel(m: ChatMessage): string {
 		switch (m.status) {
 			case 'copied':
 				return t('statusCopied');
 			case 'shared':
 				return t('statusShared');
+			case 'downloaded':
+				return t('statusDownloaded');
 			case 'encrypted':
 				return t('statusEncrypted');
 			default:
@@ -115,14 +148,20 @@
 		{#each list as m (m.id)}
 			<div class="flex flex-col {m.dir === 'out' ? 'items-end' : 'items-start'}">
 				<div class="bubble {m.dir === 'out' ? 'mine' : 'theirs'}" data-testid={m.dir === 'out' ? 'msg-out' : 'msg-in'}>
-					<div class="whitespace-pre-wrap break-words">{m.body}</div>
-					<div class="text-muted mt-1 flex items-center gap-2 text-[11px]">
+					{#if m.file}
+						<FileBubble msg={m} />
+					{:else}
+						<div class="whitespace-pre-wrap break-words">{m.body}</div>
+					{/if}
+					<div class="text-muted mt-1 flex flex-wrap items-center gap-2 text-[11px]">
 						<span>{fmtTime(m.ts)}</span>
 						{#if m.dir === 'out'}
 							<span>· 🔒 {statusLabel(m)}</span>
-							<button class="underline" onclick={() => deliver(m, 'copy')}>{t('copy')}</button>
-							{#if canShare()}<button class="underline" onclick={() => deliver(m, 'share')}>{t('share')}</button>{/if}
-							<button class="underline" onclick={() => (qrFor = m)}>QR</button>
+							{#if !m.file}
+								<button class="underline" onclick={() => deliver(m, 'copy')}>{t('copy')}</button>
+								{#if canShare()}<button class="underline" onclick={() => deliver(m, 'share')}>{t('share')}</button>{/if}
+								<button class="underline" onclick={() => (qrFor = m)}>QR</button>
+							{/if}
 						{/if}
 					</div>
 				</div>
@@ -131,6 +170,8 @@
 	</section>
 
 	<footer class="border-border flex items-end gap-2 border-t px-3 py-2">
+		<input bind:this={fileInput} type="file" class="hidden" onchange={onFilePicked} data-testid="file-input" />
+		<button class="text-xl" onclick={() => fileInput.click()} aria-label={t('attach')} disabled={busy} data-testid="attach">📎</button>
 		<textarea
 			class="field max-h-40 min-h-[2.75rem] flex-1 resize-none"
 			rows="1"

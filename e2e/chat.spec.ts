@@ -90,10 +90,10 @@ test('text messages travel both ways as envelopes, incl. multi-part and replay r
 	// Replaying an old envelope is rejected, own envelope too
 	await importText(b, 'chat-import', env1);
 	await expect(b.getByRole('alert')).toBeVisible();
-	await b.getByRole('button', { name: /Abbrechen|Cancel/ }).first().click();
+	await b.getByTestId('inbox-close').click();
 	await importText(a, 'chat-import', env1);
 	await expect(a.getByRole('alert')).toBeVisible();
-	await a.getByRole('button', { name: /Abbrechen|Cancel/ }).first().click();
+	await a.getByTestId('inbox-close').click();
 
 	// Home shows preview + unread badge on B after a fresh message from A
 	const env4 = await sendAndGrab(a, 'Noch eine');

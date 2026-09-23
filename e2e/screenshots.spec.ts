@@ -47,7 +47,7 @@ for (const scheme of SCHEMES) {
 		test(`screens ${width} ${scheme}`, async ({ browser }: { browser: Browser }) => {
 			const height = width < 800 ? 844 : 900;
 			const perms = ['clipboard-read', 'clipboard-write'];
-			const ctxA = await browser.newContext({ viewport: { width, height }, colorScheme: scheme, locale: 'de-DE', permissions: perms });
+			const ctxA = await browser.newContext({ viewport: { width, height }, colorScheme: scheme, locale: 'de-DE', permissions: perms, acceptDownloads: true });
 			const ctxB = await browser.newContext({ viewport: { width, height }, colorScheme: scheme, locale: 'de-DE', permissions: perms });
 			const a = await ctxA.newPage();
 			const b = await ctxB.newPage();
@@ -111,7 +111,19 @@ for (const scheme of SCHEMES) {
 			await a.getByTestId('inbox-field').fill(env2);
 			await a.getByTestId('inbox-submit').click();
 			await a.getByTestId('msg-in').first().waitFor();
+			// attachments: a text file and a small image
+			const dlp = a.waitForEvent('download');
+			await a.getByTestId('file-input').setInputFiles({ name: 'vertrag.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(240_000, 7) });
+			const encPath = await (await dlp).path();
+			const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGP4z8DwHwyBBAMDAB1wBf1zqK5CAAAAAElFTkSuQmCC', 'base64');
+			const dlp2 = a.waitForEvent('download');
+			await a.getByTestId('file-input').setInputFiles({ name: 'foto.png', mimeType: 'image/png', buffer: png });
+			await (await dlp2).path();
 			await shot(a, '12_chat', width, scheme);
+			await b.getByTestId('chat-import').click();
+			await b.getByTestId('inbox-file-input').setInputFiles(encPath!);
+			await b.getByTestId('file-bubble').first().waitFor();
+			await shot(b, '15_chat_file_received', width, scheme);
 			await a.getByRole('link', { name: /Zurück|Back/ }).click();
 			await a.getByTestId('contact-list').waitFor();
 			await shot(a, '13_home_preview', width, scheme);

@@ -98,6 +98,14 @@ export const de = {
 	statusCopied: 'kopiert',
 	statusShared: 'geteilt',
 	copy: 'Kopieren',
+	statusDownloaded: 'als Datei gespeichert',
+	// files
+	attach: 'Datei anhängen',
+	inboxFile: 'Verschlüsselte Datei öffnen (.aes256)',
+	fileSave: 'Speichern',
+	fileSendAgain: 'Erneut teilen',
+	fileDownloaded: 'Verschlüsselte Datei gespeichert: {name} – jetzt z. B. per Telegram als Datei senden',
+	fileTooLarge: 'Datei zu groß (max. {max}).',
 	// settings
 	settings: 'Einstellungen',
 	setLanguage: 'Sprache',
