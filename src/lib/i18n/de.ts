@@ -1,0 +1,40 @@
+export const de = {
+	appName: 'AES256CHAT',
+	// onboarding
+	onbTitle: 'Willkommen',
+	onbIntro:
+		'Ende-zu-Ende verschlüsselter Messenger ohne Server. Nachrichten gehen als verschlüsselte Umschläge direkt von Gerät zu Gerät – über Telegram, QR-Code oder Zwischenablage.',
+	onbName: 'Dein Anzeigename',
+	onbNameHint: 'Nur deine Kontakte sehen ihn. Kein Konto, keine Nummer, keine E-Mail.',
+	onbPass: 'Master-Passwort',
+	onbPassRepeat: 'Master-Passwort wiederholen',
+	onbPassHint: 'Mindestens {min} Zeichen. Es gibt keine Wiederherstellung – wer es vergisst, verliert alles.',
+	onbPassMismatch: 'Die Passwörter stimmen nicht überein.',
+	onbPassShort: 'Zu kurz – mindestens {min} Zeichen.',
+	onbHistory: 'Nachrichtenverlauf',
+	onbEphemeral: 'Flüchtig (empfohlen)',
+	onbEphemeralHint: 'Nachrichten bleiben nur im Arbeitsspeicher. Beim Sperren oder Schließen sind sie weg.',
+	onbPersist: 'Verlauf behalten',
+	onbPersistHint: 'Verschlüsselt auf dem Gerät, Selbstlöschung nach 7 Tagen (einstellbar).',
+	onbDestroy: 'Nach 10 falschen Passwörtern alles löschen',
+	onbDestroyHint: 'Schützt bei Geräteverlust. Danach ist die Identität unwiederbringlich weg.',
+	onbCreate: 'Tresor anlegen',
+	onbCreating: 'Schlüssel werden erzeugt …',
+	// lock
+	lockTitle: 'Gesperrt',
+	lockPass: 'Master-Passwort',
+	lockUnlock: 'Entsperren',
+	lockWrong: 'Falsches Passwort.',
+	lockWrongLeft: 'Falsches Passwort. Noch {n} Versuche, dann wird alles gelöscht.',
+	lockWait: 'Zu viele Versuche. Warte {s} s.',
+	lockDestroyed: 'Der Tresor wurde nach zu vielen Fehlversuchen gelöscht.',
+	lockForgot: 'Passwort vergessen? Es gibt keine Wiederherstellung – du kannst nur neu beginnen.',
+	lockReset: 'Alles löschen und neu beginnen',
+	lockResetConfirm: 'Wirklich alles löschen? Identität, Kontakte und Nachrichten sind danach weg.',
+	lockSoon: 'Sperre in {s} s',
+	// general
+	cancel: 'Abbrechen',
+	lockNow: 'Jetzt sperren',
+	yes: 'Ja',
+	no: 'Nein'
+} as const;
