@@ -144,6 +144,16 @@ export const de = {
 	setWipeHint: 'Identität, Kontakte und Nachrichten werden unwiderruflich gelöscht.',
 	setWipeConfirm: 'Wirklich alles löschen?',
 	setAbout: 'Kein Server, kein Konto, keine Telemetrie. Quellcode: AGPL-3.0.',
+	// passphrase tool
+	pwTitle: 'Passwort-Werkzeug',
+	pwIntro: 'Das alte AES256CHAT-Format: ein gemeinsames Passwort statt Kontakt-Schlüsseln. Für Nachrichten an Leute, die die neue App noch nicht haben. Ohne Vorwärtssicherheit – für echte Gespräche besser einen Kontakt anlegen.',
+	pwSettingsHint: 'Altes Passwort-Format (🛡️QR-ENC:, 🔐FILE:) ver- und entschlüsseln.',
+	pwEncrypt: 'Verschlüsseln',
+	pwDecrypt: 'Entschlüsseln',
+	pwPassword: 'Gemeinsames Passwort',
+	pwPlainPlaceholder: 'Text …',
+	pwPickFile: 'Datei wählen (max. 10 MB)',
+	pwDecryptFailed: 'Entschlüsselung fehlgeschlagen – falsches Passwort oder beschädigte Daten.',
 	// general
 	back: 'Zurück',
 	cancel: 'Abbrechen',

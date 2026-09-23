@@ -138,6 +138,13 @@ for (const scheme of SCHEMES) {
 			await a.getByRole('link', { name: /Einstellungen|Settings/ }).click();
 			await a.getByText(/Master-Passwort ändern|Change master/).waitFor();
 			await shot(a, '14_settings', width, scheme);
+			await a.getByTestId('pw-tool-link').click();
+			await a.getByTestId('pw-input').fill('Hallo aus dem Passwort-Werkzeug');
+			await a.getByTestId('pw-key').fill('geheim 123');
+			await a.getByTestId('pw-run').click();
+			await a.getByTestId('pw-output').waitFor();
+			await shot(a, '18_password_tool', width, scheme);
+			await a.getByRole('link', { name: /Zurück|Back/ }).click();
 			await a.getByRole('link', { name: /Zurück|Back/ }).click();
 
 			await a.getByRole('button', { name: /Jetzt sperren|Lock now/ }).click();

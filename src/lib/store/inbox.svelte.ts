@@ -29,7 +29,10 @@ class InboxState {
 		for (const tok of tokens) {
 			const p = parseEnvelope(tok);
 			if (p.type === 'complete') return this.handleComplete(p.kind, p.payload);
-			if (p.type === 'legacy') return { type: 'legacy', text: p.text };
+			if (p.type === 'legacy') {
+				this.legacyHandoff = p.text;
+				return { type: 'legacy', text: p.text };
+			}
 			if (p.type === 'part') {
 				const done = this.assembler.add(p);
 				if (done) {
@@ -79,6 +82,15 @@ class InboxState {
 			if (e instanceof NoMatchingContactError) return { type: 'no-contact' };
 			return { type: 'error', message: (e as Error).message };
 		}
+	}
+
+	/** Legacy passphrase text handed over to /tools/password. */
+	legacyHandoff: string | null = null;
+
+	takeLegacyHandoff(): string | null {
+		const h = this.legacyHandoff;
+		this.legacyHandoff = null;
+		return h;
 	}
 
 	takeHandoff(): { kind: 'offer' | 'answer'; payload: Uint8Array } | null {

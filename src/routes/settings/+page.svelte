@@ -124,6 +124,11 @@
 		{/if}
 	</section>
 
+	<a class="card block" href="/tools/password" data-testid="pw-tool-link">
+		<div class="font-medium">🔑 {t('pwTitle')}</div>
+		<p class="text-muted mt-1 text-xs">{t('pwSettingsHint')}</p>
+	</a>
+
 	<p class="text-muted text-center text-xs">{t('setAbout')} · {info ? new Date(info.createdAt).toLocaleDateString() : ''}</p>
 </main>
 

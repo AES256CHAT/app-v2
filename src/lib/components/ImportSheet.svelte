@@ -39,7 +39,8 @@
 				error = t('inboxNoContact');
 				break;
 			case 'legacy':
-				error = t('inboxLegacy');
+				onclose();
+				goto('/tools/password');
 				break;
 			case 'unknown':
 				error = t('scanPasteInvalid');
