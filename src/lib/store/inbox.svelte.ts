@@ -2,6 +2,7 @@
 
 import { PartAssembler, parseEnvelope, type EnvelopeKind } from '$lib/crypto/envelope';
 import { isFileEnvelope, unwrapFileEnvelope } from '$lib/crypto/fileenvelope';
+import { readClipboardText } from '$lib/transport/share';
 import { live } from './live.svelte';
 import { messages, NoMatchingContactError, type ChatMessage } from './messages.svelte';
 import type { ContactRecord } from './contacts.svelte';
@@ -84,6 +85,16 @@ class InboxState {
 		}
 	}
 
+	/** Text received via the share target / native intent while locked; processed on the home screen. */
+	pendingShare: string | null = null;
+	pendingFile: File | null = null;
+
+	takePendingShare(): string | null {
+		const t = this.pendingShare;
+		this.pendingShare = null;
+		return t;
+	}
+
 	/** Legacy passphrase text handed over to /tools/password. */
 	legacyHandoff: string | null = null;
 
@@ -101,11 +112,7 @@ class InboxState {
 
 	/** Needs a user gesture in browsers; returns null when not permitted. */
 	async readClipboard(): Promise<string | null> {
-		try {
-			return await navigator.clipboard.readText();
-		} catch {
-			return null;
-		}
+		return readClipboardText();
 	}
 }
 

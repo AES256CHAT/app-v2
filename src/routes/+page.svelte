@@ -5,7 +5,10 @@
 	import { bundleOf, contactId, formatId } from '$lib/crypto/identity';
 	import { t } from '$lib/i18n/index.svelte';
 	import { contacts } from '$lib/store/contacts.svelte';
+	import { goto } from '$app/navigation';
+	import { inbox } from '$lib/store/inbox.svelte';
 	import { messages } from '$lib/store/messages.svelte';
+	import { toast } from '$lib/store/toast.svelte';
 	import { loadMe } from '$lib/vault/me';
 	import { vaultState } from '$lib/vault/vault.svelte';
 
@@ -21,6 +24,27 @@
 		}
 		await contacts.refresh();
 		await messages.loadAll();
+		if (inbox.pendingFile) {
+			const f = inbox.pendingFile;
+			inbox.pendingFile = null;
+			const r = await inbox.importFile(f);
+			if (r.type === 'message') {
+				toast.show(t('inboxReceived', { name: r.contact.name }));
+				goto(`/chat/${r.contact.id}`);
+			} else if (r.type === 'no-contact') toast.show(t('inboxNoContact'), 5000);
+		}
+		const shared = inbox.takePendingShare();
+		if (shared) {
+			const r = await inbox.importText(shared);
+			if (r.type === 'message') {
+				toast.show(t('inboxReceived', { name: r.contact.name }));
+				goto(`/chat/${r.contact.id}`);
+			} else if (r.type === 'handshake') goto('/contacts/add');
+			else if (r.type === 'legacy') goto('/tools/password');
+			else if (r.type === 'live') goto(`/chat/${r.contact.id}`);
+			else if (r.type === 'no-contact') toast.show(t('inboxNoContact'), 5000);
+			else if (r.type === 'partial') toast.show(t('scanProgress', { have: r.have, total: r.total }));
+		}
 	});
 
 	const fmtDay = (ts: number) => {

@@ -1,0 +1,44 @@
+name: Android APK
+
+# Debug APK on every push to main and on manual dispatch. Release signing happens
+# offline (docs/RELEASE_GUIDE.md) — no keystore lives in CI.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: npx cap sync android
+      - run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug --no-daemon
+      - run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk AES256CHAT-debug.apk
+          sha256sum AES256CHAT-debug.apk > AES256CHAT-debug.apk.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AES256CHAT-debug-apk
+          path: |
+            AES256CHAT-debug.apk
+            AES256CHAT-debug.apk.sha256
+          retention-days: 30

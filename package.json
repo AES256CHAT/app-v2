@@ -12,21 +12,32 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
 	},
 	"devDependencies": {
+		"@capacitor/android": "^8.5.2",
+		"@capacitor/cli": "^8.5.2",
+		"@capacitor/ios": "^8.5.2",
 		"@playwright/test": "^1.63.0",
 		"@sveltejs/adapter-static": "^3.0.10",
 		"@sveltejs/kit": "^2.63.0",
 		"@sveltejs/vite-plugin-svelte": "^7.1.2",
 		"@tailwindcss/vite": "^4.3.3",
 		"@types/qrcode": "^1.5.6",
+		"@vite-pwa/sveltekit": "^1.1.0",
 		"fake-indexeddb": "^6.2.5",
 		"svelte": "^5.56.1",
 		"svelte-check": "^4.6.0",
 		"tailwindcss": "^4.3.3",
 		"typescript": "^6.0.3",
 		"vite": "^8.0.16",
-		"vitest": "^5.0.1"
+		"vite-plugin-pwa": "^1.3.0",
+		"vitest": "^5.0.1",
+		"workbox-window": "^7.4.1"
 	},
 	"dependencies": {
+		"@capacitor/app": "^8.1.1",
+		"@capacitor/clipboard": "^8.0.1",
+		"@capacitor/core": "^8.5.2",
+		"@capacitor/filesystem": "^8.1.3",
+		"@capacitor/share": "^8.0.2",
 		"@noble/curves": "^2.4.0",
 		"@noble/hashes": "^2.4.0",
 		"@noble/post-quantum": "^0.7.1",

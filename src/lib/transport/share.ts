@@ -1,16 +1,23 @@
 // Getting envelopes out of the device: share sheet, clipboard (with auto-clear), or download.
+// On Capacitor the native plugins are used; in browsers the Web APIs.
+
+import { isNative, nativeReadClipboard, nativeShareFile, nativeShareText, nativeWriteClipboard } from '$lib/native/platform';
 
 let clearTimer: ReturnType<typeof setTimeout> | null = null;
 
 export async function copyText(text: string, clearAfterMs = 60_000): Promise<void> {
-	await navigator.clipboard.writeText(text);
+	if (isNative()) await nativeWriteClipboard(text);
+	else await navigator.clipboard.writeText(text);
 	if (clearTimer) clearTimeout(clearTimer);
 	if (clearAfterMs > 0) {
 		clearTimer = setTimeout(async () => {
 			try {
 				// Only clear if the clipboard still holds our text.
-				const cur = await navigator.clipboard.readText().catch(() => null);
-				if (cur === null || cur === text) await navigator.clipboard.writeText('');
+				const cur = isNative() ? await nativeReadClipboard() : await navigator.clipboard.readText().catch(() => null);
+				if (cur === null || cur === text) {
+					if (isNative()) await nativeWriteClipboard('');
+					else await navigator.clipboard.writeText('');
+				}
 			} catch {
 				/* ignore */
 			}
@@ -18,11 +25,21 @@ export async function copyText(text: string, clearAfterMs = 60_000): Promise<voi
 	}
 }
 
+export async function readClipboardText(): Promise<string | null> {
+	if (isNative()) return nativeReadClipboard();
+	try {
+		return await navigator.clipboard.readText();
+	} catch {
+		return null;
+	}
+}
+
 export function canShare(): boolean {
-	return typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+	return isNative() || (typeof navigator !== 'undefined' && typeof navigator.share === 'function');
 }
 
 export async function shareText(text: string): Promise<boolean> {
+	if (isNative()) return nativeShareText(text);
 	if (!canShare()) return false;
 	try {
 		await navigator.share({ text });
@@ -39,6 +56,7 @@ export function canShareFiles(file: File): boolean {
 
 /** Share sheet when the platform can share files, otherwise a plain download. Returns how it went out. */
 export async function shareOrDownload(bytes: Uint8Array, name: string, mime: string): Promise<'shared' | 'downloaded' | 'cancelled'> {
+	if (isNative()) return (await nativeShareFile(bytes, name)) ? 'shared' : 'cancelled';
 	const file = new File([bytes as BlobPart], name, { type: mime });
 	if (canShareFiles(file)) {
 		try {

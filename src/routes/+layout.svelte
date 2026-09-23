@@ -7,11 +7,29 @@
 	import { vaultState } from '$lib/vault/vault.svelte';
 	import { t } from '$lib/i18n/index.svelte';
 	import { toast } from '$lib/store/toast.svelte';
+	import { inbox } from '$lib/store/inbox.svelte';
+	import { registerNativeHandlers } from '$lib/native/platform';
 
 	let { children } = $props();
 
-	onMount(() => {
+	onMount(async () => {
 		vaultState.start();
+		registerNativeHandlers(
+			(bytes, name) => {
+				inbox.pendingFile = new File([bytes as BlobPart], name);
+				goto('/', { replaceState: true });
+			},
+			(text) => {
+				inbox.pendingShare = text;
+				goto('/', { replaceState: true });
+			}
+		);
+		try {
+			const { registerSW } = await import('virtual:pwa-register');
+			registerSW({ immediate: true });
+		} catch {
+			/* no service worker in this environment */
+		}
 	});
 
 	// Route guard: no vault → onboarding, locked → lock screen, otherwise keep the user out of both.

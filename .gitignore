@@ -25,3 +25,9 @@ vite.config.ts.timestamp-*
 # Playwright
 /test-results
 /playwright-report
+
+# Android
+android/local.properties
+android/.gradle
+android/app/build
+android/build
