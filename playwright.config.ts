@@ -9,10 +9,12 @@ export default defineConfig({
 		headless: true,
 		trace: 'retain-on-failure'
 	},
+	// Playwright owns the server: run `pnpm build` first. A busy port fails loudly instead of
+	// silently testing a stale build.
 	webServer: {
-		command: 'pnpm build && pnpm preview --port 4173 --host 127.0.0.1',
+		command: 'pnpm preview --port 4173 --host 127.0.0.1 --strictPort',
 		url: 'http://127.0.0.1:4173',
-		reuseExistingServer: true,
-		timeout: 120_000
+		reuseExistingServer: false,
+		timeout: 60_000
 	}
 });

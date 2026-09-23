@@ -1,5 +1,7 @@
 // Device identity: Ed25519 (signatures) + X25519 (DH) + ML-KEM-768 (post-quantum KEM).
-// One identity per device. Contact IDs and safety numbers are derived from the public bundle.
+// One identity per device. The contact ID and safety number are derived from the two
+// long-term classical keys only ("bundle", 64 bytes); the KEM key travels in the offer and
+// may rotate without changing anyone's ID.
 
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
@@ -9,7 +11,7 @@ import { b32Encode, concat, randomBytes, utf8 } from './bytes';
 export const ED_PUB_LEN = 32;
 export const X_PUB_LEN = 32;
 export const KEM_PUB_LEN = 1184;
-export const BUNDLE_LEN = ED_PUB_LEN + X_PUB_LEN + KEM_PUB_LEN; // 1248
+export const BUNDLE_LEN = ED_PUB_LEN + X_PUB_LEN; // 64
 export const SIG_LEN = 64;
 
 export interface KeyPair {
@@ -20,7 +22,6 @@ export interface KeyPair {
 export interface PublicBundle {
 	ed: Uint8Array;
 	x: Uint8Array;
-	kem: Uint8Array;
 }
 
 export interface Identity {
@@ -35,15 +36,7 @@ export interface Identity {
 export function generateIdentity(): Identity {
 	const edSec = ed25519.utils.randomSecretKey();
 	const xSec = x25519.utils.randomSecretKey();
-	const kemSeed = randomBytes(64);
-	const kem = ml_kem768.keygen(kemSeed);
-	return {
-		ed: { pub: ed25519.getPublicKey(edSec), sec: edSec },
-		x: { pub: x25519.getPublicKey(xSec), sec: xSec },
-		kemSeed,
-		kem: { pub: kem.publicKey, sec: kem.secretKey },
-		createdAt: Date.now()
-	};
+	return identityFromSecrets(edSec, xSec, randomBytes(64), Date.now());
 }
 
 /** Rebuild an identity from its stored secrets. */
@@ -64,23 +57,17 @@ export function identityFromSecrets(
 }
 
 export function bundleOf(id: Identity): PublicBundle {
-	return { ed: id.ed.pub, x: id.x.pub, kem: id.kem.pub };
+	return { ed: id.ed.pub, x: id.x.pub };
 }
 
 export function encodeBundle(b: PublicBundle): Uint8Array {
-	if (b.ed.length !== ED_PUB_LEN || b.x.length !== X_PUB_LEN || b.kem.length !== KEM_PUB_LEN) {
-		throw new Error('invalid public bundle');
-	}
-	return concat(b.ed, b.x, b.kem);
+	if (b.ed.length !== ED_PUB_LEN || b.x.length !== X_PUB_LEN) throw new Error('invalid public bundle');
+	return concat(b.ed, b.x);
 }
 
 export function decodeBundle(bytes: Uint8Array): PublicBundle {
 	if (bytes.length !== BUNDLE_LEN) throw new Error('invalid public bundle length');
-	return {
-		ed: bytes.slice(0, ED_PUB_LEN),
-		x: bytes.slice(ED_PUB_LEN, ED_PUB_LEN + X_PUB_LEN),
-		kem: bytes.slice(ED_PUB_LEN + X_PUB_LEN)
-	};
+	return { ed: bytes.slice(0, ED_PUB_LEN), x: bytes.slice(ED_PUB_LEN) };
 }
 
 /** Anonymous contact ID: 16 base32 chars of SHA-256(bundle). ~80 bits, collision-safe for contact lists. */

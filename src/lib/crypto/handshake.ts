@@ -15,6 +15,7 @@ import { sha256, sha512 } from '@noble/hashes/sha2.js';
 import { concat, equalBytes, packLp, readLp, utf8, wipe } from './bytes';
 import {
 	BUNDLE_LEN,
+	KEM_PUB_LEN,
 	SIG_LEN,
 	X_PUB_LEN,
 	bundleOf,
@@ -65,34 +66,49 @@ function encodeName(name: string): Uint8Array {
 	return b;
 }
 
+export function offerHash(offer: Uint8Array): Uint8Array {
+	return sha256(offer);
+}
+
 // --- Offer -----------------------------------------------------------------------------------------
-// layout: v(1) ‖ bundle(1248) ‖ eph(32) ‖ lp(name) ‖ sig(64)
+// layout: v(1) ‖ bundle(64) ‖ kemPub(1184) ‖ eph(32) ‖ lp(name) ‖ sig(64)
 
 export function createOffer(me: Identity, myName: string): PendingOffer {
 	const eph = ephemeral();
-	const body = concat(new Uint8Array([VERSION]), encodeBundle(bundleOf(me)), eph.pub, packLp(encodeName(myName)));
+	const body = concat(
+		new Uint8Array([VERSION]),
+		encodeBundle(bundleOf(me)),
+		me.kem.pub,
+		eph.pub,
+		packLp(encodeName(myName))
+	);
 	const sig = sign(me, concat(TAG_OFFER, body));
 	return { eph, offer: concat(body, sig) };
 }
 
 interface ParsedOffer {
 	bundle: PublicBundle;
+	kemPub: Uint8Array;
 	eph: Uint8Array;
 	name: string;
 }
 
 function parseOffer(offer: Uint8Array): ParsedOffer {
-	if (offer.length < 1 + BUNDLE_LEN + X_PUB_LEN + 2 + SIG_LEN) throw new HandshakeError('offer too short');
+	const minLen = 1 + BUNDLE_LEN + KEM_PUB_LEN + X_PUB_LEN + 2 + SIG_LEN;
+	if (offer.length < minLen) throw new HandshakeError('offer too short');
 	if (offer[0] !== VERSION) throw new HandshakeError('unsupported offer version');
-	const bundle = decodeBundle(offer.slice(1, 1 + BUNDLE_LEN));
-	let off = 1 + BUNDLE_LEN;
+	let off = 1;
+	const bundle = decodeBundle(offer.slice(off, off + BUNDLE_LEN));
+	off += BUNDLE_LEN;
+	const kemPub = offer.slice(off, off + KEM_PUB_LEN);
+	off += KEM_PUB_LEN;
 	const eph = offer.slice(off, off + X_PUB_LEN);
 	off += X_PUB_LEN;
 	const { value: nameBytes, next } = readLp(offer, off);
 	const sig = offer.slice(next);
 	if (sig.length !== SIG_LEN) throw new HandshakeError('malformed offer');
 	if (!verify(bundle.ed, concat(TAG_OFFER, offer.slice(0, next)), sig)) throw new HandshakeError('bad offer signature');
-	return { bundle, eph, name: utf8.decode(nameBytes) };
+	return { bundle, kemPub, eph, name: utf8.decode(nameBytes) };
 }
 
 /** Read-only peek so the UI can show "Add <name>?" before committing. */
@@ -102,7 +118,16 @@ export function peekOffer(offer: Uint8Array): Contact {
 }
 
 // --- Answer ----------------------------------------------------------------------------------------
-// layout: v(1) ‖ bundle(1248) ‖ eph(32) ‖ kemCt(1088) ‖ offerHash(32) ‖ lp(name) ‖ sig(64)
+// layout: v(1) ‖ bundle(64) ‖ eph(32) ‖ kemCt(1088) ‖ offerHash(32) ‖ lp(name) ‖ sig(64)
+
+const ANSWER_HASH_OFFSET = 1 + BUNDLE_LEN + X_PUB_LEN + KEM_CT_LEN;
+const ANSWER_MIN_LEN = ANSWER_HASH_OFFSET + 32 + 2 + SIG_LEN;
+
+/** Which offer does this answer belong to? Lets the UI look up the pending offer before verifying. */
+export function answerOfferHash(answer: Uint8Array): Uint8Array {
+	if (answer.length < ANSWER_MIN_LEN) throw new HandshakeError('answer too short');
+	return answer.slice(ANSWER_HASH_OFFSET, ANSWER_HASH_OFFSET + 32);
+}
 
 export function acceptOffer(
 	me: Identity,
@@ -114,7 +139,7 @@ export function acceptOffer(
 	if (equalBytes(encodeBundle(o.bundle), encodeBundle(myBundle))) throw new HandshakeError('cannot add yourself');
 
 	const eph = ephemeral();
-	const { cipherText, sharedSecret: kemSs } = ml_kem768.encapsulate(o.bundle.kem);
+	const { cipherText, sharedSecret: kemSs } = ml_kem768.encapsulate(o.kemPub);
 
 	const dh1 = x25519.getSharedSecret(me.x.sec, o.bundle.x); // DH(idA, idB)
 	const dh2 = x25519.getSharedSecret(me.x.sec, o.eph); //      DH(ephA, idB)
@@ -123,13 +148,12 @@ export function acceptOffer(
 	const { sk, bobChain } = deriveSecrets(dh1, dh2, dh3, dh4, kemSs);
 	wipe(dh1, dh2, dh3, dh4, kemSs);
 
-	const offerHash = sha256(offer);
 	const body = concat(
 		new Uint8Array([VERSION]),
 		encodeBundle(myBundle),
 		eph.pub,
 		cipherText,
-		offerHash,
+		offerHash(offer),
 		packLp(encodeName(myName))
 	);
 	const sig = sign(me, concat(TAG_ANSWER, body));
@@ -147,8 +171,7 @@ export function finalizeOffer(
 	pending: PendingOffer,
 	answer: Uint8Array
 ): { session: RatchetState; contact: Contact } {
-	const minLen = 1 + BUNDLE_LEN + X_PUB_LEN + KEM_CT_LEN + 32 + 2 + SIG_LEN;
-	if (answer.length < minLen) throw new HandshakeError('answer too short');
+	if (answer.length < ANSWER_MIN_LEN) throw new HandshakeError('answer too short');
 	if (answer[0] !== VERSION) throw new HandshakeError('unsupported answer version');
 	let off = 1;
 	const bundle = decodeBundle(answer.slice(off, off + BUNDLE_LEN));
@@ -157,22 +180,23 @@ export function finalizeOffer(
 	off += X_PUB_LEN;
 	const kemCt = answer.slice(off, off + KEM_CT_LEN);
 	off += KEM_CT_LEN;
-	const offerHash = answer.slice(off, off + 32);
+	const hash = answer.slice(off, off + 32);
 	off += 32;
 	const { value: nameBytes, next } = readLp(answer, off);
 	const sig = answer.slice(next);
 	if (sig.length !== SIG_LEN) throw new HandshakeError('malformed answer');
 	if (!verify(bundle.ed, concat(TAG_ANSWER, answer.slice(0, next)), sig)) throw new HandshakeError('bad answer signature');
-	if (!equalBytes(offerHash, sha256(pending.offer))) throw new HandshakeError('answer does not match this offer');
+	if (!equalBytes(hash, offerHash(pending.offer))) throw new HandshakeError('answer does not match this offer');
 
 	const myBundle = bundleOf(me);
+	if (equalBytes(encodeBundle(bundle), encodeBundle(myBundle))) throw new HandshakeError('cannot add yourself');
 	const kemSs = ml_kem768.decapsulate(kemCt, me.kem.sec);
 	const dh1 = x25519.getSharedSecret(me.x.sec, bundle.x);
 	const dh2 = x25519.getSharedSecret(pending.eph.sec, bundle.x);
 	const dh3 = x25519.getSharedSecret(me.x.sec, ephB);
 	const dh4 = x25519.getSharedSecret(pending.eph.sec, ephB);
 	const { sk, bobChain } = deriveSecrets(dh1, dh2, dh3, dh4, kemSs);
-	wipe(dh1, dh2, dh3, dh4, kemSs, pending.eph.sec);
+	wipe(dh1, dh2, dh3, dh4, kemSs);
 
 	const ad = sessionAd(myBundle, bundle);
 	const session = initAlice(sk, bobChain, ephB, ad);
