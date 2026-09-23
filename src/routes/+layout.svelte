@@ -6,6 +6,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import { vaultState } from '$lib/vault/vault.svelte';
 	import { t } from '$lib/i18n/index.svelte';
+	import { toast } from '$lib/store/toast.svelte';
 
 	let { children } = $props();
 
@@ -35,6 +36,12 @@
 		{@render children()}
 	{/if}
 </div>
+
+{#if toast.text}
+	<div class="bg-surface-2 border-border fixed top-16 left-1/2 z-50 max-w-[90vw] -translate-x-1/2 rounded-xl border px-4 py-2 text-center text-sm shadow-lg" role="status">
+		{toast.text}
+	</div>
+{/if}
 
 {#if vaultState.lockWarning !== null}
 	<div

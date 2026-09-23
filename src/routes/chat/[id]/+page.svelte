@@ -1,0 +1,191 @@
+<script lang="ts">
+	import { onMount, tick } from 'svelte';
+	import { page } from '$app/state';
+	import ImportSheet from '$lib/components/ImportSheet.svelte';
+	import QrShow from '$lib/components/QrShow.svelte';
+	import { b64uDecode } from '$lib/crypto/bytes';
+	import { PREFIX } from '$lib/crypto/envelope';
+	import { t } from '$lib/i18n/index.svelte';
+	import { contacts } from '$lib/store/contacts.svelte';
+	import { messages, type ChatMessage } from '$lib/store/messages.svelte';
+	import { toast } from '$lib/store/toast.svelte';
+	import { canShare, copyText, shareText } from '$lib/transport/share';
+	import { vault } from '$lib/vault/vault.svelte';
+
+	const id = $derived(page.params.id ?? '');
+	const contact = $derived(contacts.get(id));
+	const list = $derived(messages.list(id));
+	const ephemeral = $derived(vault.info?.history !== 'persist');
+
+	let draft = $state('');
+	let busy = $state(false);
+	let showImport = $state(false);
+	let qrFor = $state<ChatMessage | null>(null);
+	let scroller: HTMLElement;
+
+	onMount(async () => {
+		if (!contacts.loaded) await contacts.refresh();
+		await messages.load(id);
+		messages.markRead(id);
+		scrollDown();
+	});
+
+	$effect(() => {
+		list.length;
+		scrollDown();
+	});
+
+	async function scrollDown() {
+		await tick();
+		scroller?.scrollTo({ top: scroller.scrollHeight });
+	}
+
+	async function send() {
+		const body = draft.trim();
+		if (!body || !contact || busy) return;
+		busy = true;
+		try {
+			const msg = await messages.send(contact, body);
+			draft = '';
+			await deliver(msg, 'auto');
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function deliver(msg: ChatMessage, how: 'auto' | 'copy' | 'share') {
+		const text = msg.envelope?.join('\n') ?? '';
+		if (how === 'share' || (how === 'auto' && canShare())) {
+			const shared = await shareText(text);
+			if (shared) {
+				await messages.setStatus(msg, 'shared');
+				return;
+			}
+			if (how === 'share') return;
+		}
+		await copyText(text);
+		await messages.setStatus(msg, 'copied');
+		toast.show(msg.envelope && msg.envelope.length > 1 ? t('chatCopiedParts', { n: msg.envelope.length }) : t('chatCopied'));
+	}
+
+	function statusLabel(m: ChatMessage): string {
+		switch (m.status) {
+			case 'copied':
+				return t('statusCopied');
+			case 'shared':
+				return t('statusShared');
+			case 'encrypted':
+				return t('statusEncrypted');
+			default:
+				return '';
+		}
+	}
+
+	function payloadOf(m: ChatMessage): Uint8Array {
+		// Rebuild the raw payload from the stored envelope parts (single- or multi-part).
+		const parts = m.envelope ?? [];
+		const data = parts
+			.map((p) => p.slice(PREFIX.msg.length))
+			.map((p) => (p.includes(':') ? p.slice(p.indexOf(':') + 1) : p))
+			.join('');
+		return b64uDecode(data);
+	}
+
+	function onKey(e: KeyboardEvent) {
+		if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send();
+	}
+
+	const fmtTime = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+</script>
+
+<div class="flex h-dvh flex-col">
+	<header class="border-border flex items-center gap-3 border-b px-4 py-3">
+		<a href="/" class="text-muted text-sm" aria-label={t('back')}>←</a>
+		<a href={`/contacts/${id}`} class="flex-1">
+			<div class="font-semibold">{contact?.name ?? '…'}{#if contact?.verified}<span class="text-accent ml-1 text-xs">✔</span>{/if}</div>
+			<div class="text-muted text-xs">{ephemeral ? t('chatEphemeral') : t('chatPersist')}</div>
+		</a>
+		<button class="text-sm" onclick={() => (showImport = true)} aria-label={t('inboxTitle')} data-testid="chat-import">📥</button>
+	</header>
+
+	<section bind:this={scroller} class="flex flex-1 flex-col gap-2 overflow-y-auto px-4 py-3" data-testid="thread">
+		{#if list.length === 0}
+			<p class="text-muted m-auto max-w-xs text-center text-sm">{t('chatEmpty')}</p>
+		{/if}
+		{#each list as m (m.id)}
+			<div class="flex flex-col {m.dir === 'out' ? 'items-end' : 'items-start'}">
+				<div class="bubble {m.dir === 'out' ? 'mine' : 'theirs'}" data-testid={m.dir === 'out' ? 'msg-out' : 'msg-in'}>
+					<div class="whitespace-pre-wrap break-words">{m.body}</div>
+					<div class="text-muted mt-1 flex items-center gap-2 text-[11px]">
+						<span>{fmtTime(m.ts)}</span>
+						{#if m.dir === 'out'}
+							<span>· 🔒 {statusLabel(m)}</span>
+							<button class="underline" onclick={() => deliver(m, 'copy')}>{t('copy')}</button>
+							{#if canShare()}<button class="underline" onclick={() => deliver(m, 'share')}>{t('share')}</button>{/if}
+							<button class="underline" onclick={() => (qrFor = m)}>QR</button>
+						{/if}
+					</div>
+				</div>
+			</div>
+		{/each}
+	</section>
+
+	<footer class="border-border flex items-end gap-2 border-t px-3 py-2">
+		<textarea
+			class="field max-h-40 min-h-[2.75rem] flex-1 resize-none"
+			rows="1"
+			bind:value={draft}
+			onkeydown={onKey}
+			placeholder={t('chatPlaceholder')}
+			data-testid="composer"
+		></textarea>
+		<button class="btn-primary" onclick={send} disabled={busy || !draft.trim()} data-testid="send">{t('chatSend')}</button>
+	</footer>
+</div>
+
+{#if showImport}
+	<ImportSheet onclose={() => (showImport = false)} currentContactId={id} />
+{/if}
+
+{#if qrFor}
+	<div class="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
+		<div class="bg-bg w-full max-w-sm rounded-2xl p-5">
+			<QrShow kind="msg" payload={payloadOf(qrFor)} hint={t('chatQrHint')} />
+			<button class="text-muted mt-4 w-full text-sm underline" onclick={() => (qrFor = null)}>{t('cancel')}</button>
+		</div>
+	</div>
+{/if}
+
+<style>
+	.bubble {
+		max-width: 85%;
+		border-radius: 1rem;
+		padding: 0.5rem 0.75rem;
+		font-size: 0.95rem;
+	}
+	.mine {
+		background: var(--color-mine);
+		border-bottom-right-radius: 0.25rem;
+	}
+	.theirs {
+		background: var(--color-theirs);
+		border-bottom-left-radius: 0.25rem;
+	}
+	.field {
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 1rem;
+		padding: 0.6rem 0.9rem;
+		font-size: 1rem;
+	}
+	.btn-primary {
+		background: var(--color-accent);
+		color: var(--color-accent-fg);
+		border-radius: 1rem;
+		padding: 0.65rem 1rem;
+		font-weight: 600;
+	}
+	.btn-primary:disabled {
+		opacity: 0.5;
+	}
+</style>

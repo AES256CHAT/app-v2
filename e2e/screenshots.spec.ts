@@ -8,6 +8,7 @@ const WIDTHS = [390, 820, 1440] as const;
 const SCHEMES = ['light', 'dark'] as const;
 
 test.skip(!DIR, 'set SHOTS_DIR to capture screenshots');
+test.setTimeout(120_000);
 
 async function onboard(page: Page, name: string) {
 	await page.goto('/');
@@ -45,8 +46,9 @@ for (const scheme of SCHEMES) {
 	for (const width of WIDTHS) {
 		test(`screens ${width} ${scheme}`, async ({ browser }: { browser: Browser }) => {
 			const height = width < 800 ? 844 : 900;
-			const ctxA = await browser.newContext({ viewport: { width, height }, colorScheme: scheme, locale: 'de-DE' });
-			const ctxB = await browser.newContext({ viewport: { width, height }, colorScheme: scheme, locale: 'de-DE' });
+			const perms = ['clipboard-read', 'clipboard-write'];
+			const ctxA = await browser.newContext({ viewport: { width, height }, colorScheme: scheme, locale: 'de-DE', permissions: perms });
+			const ctxB = await browser.newContext({ viewport: { width, height }, colorScheme: scheme, locale: 'de-DE', permissions: perms });
 			const a = await ctxA.newPage();
 			const b = await ctxB.newPage();
 
@@ -81,6 +83,42 @@ for (const scheme of SCHEMES) {
 			await a.getByRole('link', { name: /Zurück|Back/ }).click();
 			await a.getByTestId('contact-list').waitFor();
 			await shot(a, '09_home_list', width, scheme);
+
+			// Chat: A sends two, B imports one and replies; import sheet; settings.
+			await a.getByTestId('contact-list').getByRole('link', { name: /Bob/ }).click();
+			await a.getByTestId('composer').fill('Hallo Bob 👋 – das ist ein verschlüsselter Umschlag, der über Telegram wandert.');
+			await a.getByTestId('send').click();
+			await a.getByTestId('msg-out').first().waitFor();
+			await a.bringToFront();
+			const env1 = await a.evaluate(() => navigator.clipboard.readText());
+			await b.bringToFront();
+			await b.getByRole('button', { name: /Zum Kontakt|Open contact/ }).click();
+			await b.getByRole('link', { name: /Zurück|Back/ }).click();
+			await b.getByTestId('contact-list').getByRole('link', { name: /Alice/ }).click();
+			await b.getByTestId('chat-import').click();
+			await shot(b, '11_import_sheet', width, scheme);
+			await b.getByTestId('inbox-paste').click();
+			await b.getByTestId('inbox-field').fill(env1);
+			await b.getByTestId('inbox-submit').click();
+			await b.getByTestId('msg-in').first().waitFor();
+			await b.getByTestId('composer').fill('Angekommen! 🔐');
+			await b.getByTestId('send').click();
+			await b.getByTestId('msg-out').first().waitFor();
+			await b.bringToFront();
+			const env2 = await b.evaluate(() => navigator.clipboard.readText());
+			await a.getByTestId('chat-import').click();
+			await a.getByTestId('inbox-paste').click();
+			await a.getByTestId('inbox-field').fill(env2);
+			await a.getByTestId('inbox-submit').click();
+			await a.getByTestId('msg-in').first().waitFor();
+			await shot(a, '12_chat', width, scheme);
+			await a.getByRole('link', { name: /Zurück|Back/ }).click();
+			await a.getByTestId('contact-list').waitFor();
+			await shot(a, '13_home_preview', width, scheme);
+			await a.getByRole('link', { name: /Einstellungen|Settings/ }).click();
+			await a.getByText(/Master-Passwort ändern|Change master/).waitFor();
+			await shot(a, '14_settings', width, scheme);
+			await a.getByRole('link', { name: /Zurück|Back/ }).click();
 
 			await a.getByRole('button', { name: /Jetzt sperren|Lock now/ }).click();
 			await a.locator('input[type="password"]').waitFor();

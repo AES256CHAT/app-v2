@@ -9,6 +9,7 @@
 	import { bundleOf, contactId } from '$lib/crypto/identity';
 	import { t } from '$lib/i18n/index.svelte';
 	import { contacts, type ContactRecord, type OfferRecord } from '$lib/store/contacts.svelte';
+	import { inbox } from '$lib/store/inbox.svelte';
 	import { loadMe, type Me } from '$lib/vault/me';
 
 	type Step =
@@ -27,6 +28,9 @@
 	onMount(async () => {
 		me = await loadMe();
 		if (me) offer = await contacts.currentOffer(me);
+		// A handshake envelope imported elsewhere (inbox sheet) lands here.
+		const h = inbox.takeHandoff();
+		if (h) onEnvelope(h.kind, h.payload);
 	});
 
 	async function newCode() {

@@ -5,6 +5,7 @@
 	import { bundleOf, formatId, formatSafetyNumber, safetyNumber } from '$lib/crypto/identity';
 	import { t } from '$lib/i18n/index.svelte';
 	import { bundleOfRecord, contacts } from '$lib/store/contacts.svelte';
+	import { messages } from '$lib/store/messages.svelte';
 	import { loadMe } from '$lib/vault/me';
 
 	const id = $derived(page.params.id ?? '');
@@ -31,7 +32,10 @@
 	}
 
 	async function remove() {
-		if (contact) await contacts.remove(contact.id);
+		if (contact) {
+			await messages.clearContact(contact.id);
+			await contacts.remove(contact.id);
+		}
 		goto('/');
 	}
 </script>
