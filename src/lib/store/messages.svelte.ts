@@ -1,7 +1,7 @@
 // Messages per contact. Ephemeral mode keeps them in memory only; persist mode also writes
 // them encrypted to the vault. Sending advances the ratchet and yields an envelope (text
 // parts, or an .aes256 file for attachments); receiving trial-decrypts against every contact
-// (no sender identifier on the wire).
+// (no sender identifier on the wire). All ratchet steps run under the contact's session lock.
 
 import { AuthError } from '$lib/crypto/aead';
 import { b64uDecode, b64uEncode } from '$lib/crypto/bytes';
@@ -9,8 +9,9 @@ import { encodeEnvelope } from '$lib/crypto/envelope';
 import { envelopeFileName, wrapFileEnvelope } from '$lib/crypto/fileenvelope';
 import { decodePlain, encodePlain, type Plain } from '$lib/crypto/message';
 import { ratchetDecrypt, ratchetEncrypt } from '$lib/crypto/ratchet';
+import { Mutex } from '$lib/util/mutex';
 import { vault } from '$lib/vault/vault.svelte';
-import { contacts, sessionOfRecord, type ContactRecord } from './contacts.svelte';
+import { contacts, type ContactRecord } from './contacts.svelte';
 
 export type MsgStatus = 'encrypted' | 'copied' | 'shared' | 'downloaded' | 'delivered' | 'received';
 
@@ -53,6 +54,11 @@ interface StoredAttachment {
 	envelope?: string; // b64u .aes256 bytes (outgoing only)
 }
 
+/** Ratchet failures that mean "not for this session" rather than a bug. */
+function notForThisSession(e: unknown): boolean {
+	return e instanceof AuthError || (e instanceof Error && /skipped|short|invalid|point|scalar/i.test(e.message));
+}
+
 class MessagesState {
 	byContact = $state<Record<string, ChatMessage[]>>({});
 	unread = $state<Record<string, number>>({});
@@ -60,6 +66,8 @@ class MessagesState {
 	/** decrypted attachment bytes + outgoing envelope bytes, keyed by message id */
 	private attachments = new Map<string, { plain: Uint8Array; envelope?: Uint8Array }>();
 	private urls = new Map<string, string>();
+	/** trial decryption touches every session → serialise it globally */
+	private receiveLock = new Mutex();
 
 	private persist(): boolean {
 		return vault.info?.history === 'persist';
@@ -80,11 +88,13 @@ class MessagesState {
 		if (!this.persist()) return;
 		const rows = await vault.list<ChatMessage>(T, { k1: contactId });
 		const existing = this.byContact[contactId] ?? [];
-		const merged = [...rows.map((r) => r.value), ...existing].sort((a, b) => a.ts - b.ts);
+		const seen = new Set(existing.map((m) => m.id));
+		const merged = [...rows.map((r) => r.value).filter((m) => !seen.has(m.id)), ...existing].sort((a, b) => a.ts - b.ts);
 		this.byContact = { ...this.byContact, [contactId]: merged };
 	}
 
 	async loadAll(): Promise<void> {
+		await vault.pruneMessages();
 		for (const c of contacts.items) await this.load(c.id);
 	}
 
@@ -94,11 +104,11 @@ class MessagesState {
 		if (this.persist()) await vault.put(T, msg.id, msg, { k1: msg.contactId, ts: msg.ts });
 	}
 
-	private async storeAttachment(id: string, plain: Uint8Array, envelope?: Uint8Array): Promise<void> {
-		this.attachments.set(id, { plain, envelope });
+	private async storeAttachment(msg: ChatMessage, plain: Uint8Array, envelope?: Uint8Array): Promise<void> {
+		this.attachments.set(msg.id, { plain, envelope });
 		if (this.persist()) {
 			const rec: StoredAttachment = { plain: b64uEncode(plain), envelope: envelope ? b64uEncode(envelope) : undefined };
-			await vault.put(T_ATT, id, rec);
+			await vault.put(T_ATT, msg.id, rec, { k1: msg.contactId, ts: msg.ts });
 		}
 	}
 
@@ -138,10 +148,12 @@ class MessagesState {
 		if (this.unread[contactId]) this.unread = { ...this.unread, [contactId]: 0 };
 	}
 
+	/** Encrypt under the contact's session lock; the advanced state is persisted before returning. */
 	async encryptFor(contact: ContactRecord, plain: Plain): Promise<Uint8Array> {
-		const { state, message } = await ratchetEncrypt(sessionOfRecord(contact), encodePlain(plain));
-		await contacts.saveSession(contact.id, state);
-		return message;
+		return contacts.withSession(contact.id, async (session) => {
+			const { state, message } = await ratchetEncrypt(session, encodePlain(plain));
+			return { state, result: message };
+		});
 	}
 
 	async send(contact: ContactRecord, body: string, direct?: DirectTransport): Promise<ChatMessage> {
@@ -176,31 +188,39 @@ class MessagesState {
 			file: { ...info, size: data.length },
 			envelopeFile: envelopeFileName(ts)
 		};
-		await this.storeAttachment(msg.id, data, envelope);
+		await this.storeAttachment(msg, data, envelope);
 		await this.store(msg);
 		return msg;
 	}
 
-	/** Trial-decrypt against every contact and return the decoded body without storing anything. */
-	async receiveRaw(payload: Uint8Array): Promise<{ contact: ContactRecord; plain: Plain }> {
-		if (!contacts.loaded) await contacts.refresh();
-		for (const c of contacts.items) {
+	/** Decrypt with one specific contact's session (live link: the peer is known). */
+	private async decryptWith(contact: ContactRecord, payload: Uint8Array): Promise<Plain | null> {
+		return contacts.withSession(contact.id, async (session) => {
 			try {
-				const r = await ratchetDecrypt(sessionOfRecord(c), payload);
-				await contacts.saveSession(c.id, r.state);
-				return { contact: c, plain: decodePlain(r.plaintext) };
+				const r = await ratchetDecrypt(session, payload);
+				return { state: r.state, result: decodePlain(r.plaintext) };
 			} catch (e) {
-				if (e instanceof AuthError) continue;
-				if (e instanceof Error && /skipped|short/.test(e.message)) continue;
+				if (notForThisSession(e)) return { state: null, result: null };
 				throw e;
 			}
-		}
-		throw new NoMatchingContactError();
+		});
 	}
 
-	/** Sealed sender: try every contact's session; the ratchet's AEAD rejects all but the right one. */
-	async receive(payload: Uint8Array): Promise<{ contact: ContactRecord; message: ChatMessage; plain: Plain }> {
-		const { contact: c, plain } = await this.receiveRaw(payload);
+	/** Sealed sender: try every contact; the ratchet's AEAD rejects all but the right one. */
+	async receiveRaw(payload: Uint8Array, only?: ContactRecord): Promise<{ contact: ContactRecord; plain: Plain }> {
+		return this.receiveLock.run(async () => {
+			if (!contacts.loaded) await contacts.refresh();
+			const candidates = only ? [only] : contacts.items;
+			for (const c of candidates) {
+				const plain = await this.decryptWith(c, payload);
+				if (plain) return { contact: c, plain };
+			}
+			throw new NoMatchingContactError();
+		});
+	}
+
+	async receive(payload: Uint8Array, only?: ContactRecord): Promise<{ contact: ContactRecord; message: ChatMessage; plain: Plain }> {
+		const { contact: c, plain } = await this.receiveRaw(payload, only);
 		if (plain.t === 'conn') {
 			// Live-link signalling is handled by the live store; nothing to show in the thread.
 			return { contact: c, plain, message: { id: '', contactId: c.id, dir: 'in', ts: plain.ts, body: '', status: 'received' } };
@@ -220,7 +240,7 @@ class MessagesState {
 			status: 'received',
 			...(plain.t === 'file' ? { file: { name: plain.name, mime: plain.mime, size: plain.size } } : {})
 		};
-		if (plain.t === 'file') await this.storeAttachment(msg.id, plain.data);
+		if (plain.t === 'file') await this.storeAttachment(msg, plain.data);
 		await this.store(msg);
 		this.unread = { ...this.unread, [c.id]: (this.unread[c.id] ?? 0) + 1 };
 		return msg;
@@ -232,13 +252,15 @@ class MessagesState {
 			const u = this.urls.get(m.id);
 			if (u) URL.revokeObjectURL(u);
 			this.urls.delete(m.id);
-			if (this.persist() && m.file) await vault.delete(T_ATT, m.id);
 		}
 		const { [contactId]: _drop, ...rest } = this.byContact;
 		void _drop;
 		this.byContact = rest;
 		this.loaded.delete(contactId);
-		if (this.persist()) await vault.deleteWhere(T, contactId);
+		if (this.persist()) {
+			await vault.deleteWhere(T, contactId);
+			await vault.deleteWhere(T_ATT, contactId);
+		}
 	}
 
 	reset(): void {

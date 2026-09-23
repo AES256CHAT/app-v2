@@ -113,7 +113,7 @@ class LiveState {
 
 	private async onMessage(contact: ContactRecord, bytes: Uint8Array): Promise<void> {
 		try {
-			const r = await messages.receive(bytes);
+			const r = await messages.receive(bytes, contact);
 			if (r.plain.t !== 'conn') toast.show(t('inboxReceived', { name: r.contact.name }));
 		} catch {
 			/* undecryptable frame: ignore */

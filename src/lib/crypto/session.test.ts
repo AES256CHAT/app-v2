@@ -41,6 +41,15 @@ describe('handshake', () => {
 		expect(peekOffer(createOffer(alice, 'Alice').offer).id).toBe(accepted.contact.id);
 	});
 
+	it('refuses expired offers', async () => {
+		const alice = generateIdentity();
+		const bob = generateIdentity();
+		const pending = createOffer(alice, 'Alice');
+		await new Promise((r) => setTimeout(r, 5));
+		expect(() => acceptOffer(bob, 'Bob', pending.offer, 1)).toThrow(/expired/);
+		expect(() => acceptOffer(bob, 'Bob', pending.offer, 60_000)).not.toThrow();
+	});
+
 	it('rejects tampered offer, self-add, and mismatched answer', async () => {
 		const alice = generateIdentity();
 		const bob = generateIdentity();

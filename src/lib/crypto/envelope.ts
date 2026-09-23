@@ -96,7 +96,11 @@ export class PartAssembler {
 		let data = '';
 		for (let i = 1; i <= g.total; i++) data += g.parts.get(i);
 		this.groups.delete(p.gid);
-		return { kind: g.kind, payload: b64uDecode(data) };
+		try {
+			return { kind: g.kind, payload: b64uDecode(data) };
+		} catch {
+			return null; // corrupt part: drop the group, the sender can resend
+		}
 	}
 
 	progress(gid: string): { have: number; total: number } | null {

@@ -8,6 +8,7 @@
 //   🔐FILE:    like 🛡️QR-ENC + u32 metadata length + JSON meta   (write + read)
 
 import { b64Decode, b64Encode, concat, randomBytes, readU32be, u32be, utf8 } from './bytes';
+import { safeMime, sanitizeName } from './message';
 
 export const LEGACY = {
 	military: '🛡️QR-ENC:',
@@ -118,11 +119,14 @@ export async function legacyDecryptFile(
 		const salt = combined.slice(0, 32);
 		const iv = combined.slice(32, 44);
 		const metaLen = readU32be(combined, 44);
-		const meta = JSON.parse(utf8.decode(combined.slice(48, 48 + metaLen))) as LegacyFileMeta;
+		const raw = JSON.parse(utf8.decode(combined.slice(48, 48 + metaLen))) as Partial<LegacyFileMeta>;
 		const ct = combined.slice(48 + metaLen);
 		const key = await pbkdf2Key(pw, salt, 100_000, 'SHA-512', ['decrypt']);
 		const pt = await crypto.subtle.decrypt(gcm(iv), key, ct as BufferSource);
-		return { data: new Uint8Array(pt), meta };
+		// The v1 metadata block is not authenticated by the format: never trust it blindly.
+		const data = new Uint8Array(pt);
+		const meta: LegacyFileMeta = { name: sanitizeName(String(raw.name ?? 'file')), type: safeMime(raw.type), size: data.length };
+		return { data, meta };
 	} catch {
 		throw new LegacyError('decryption failed');
 	}

@@ -7,6 +7,8 @@
 // adds DTLS on top of end-to-end encryption and never handles plaintext.
 
 const CHUNK = 16 * 1024;
+const MAX_FRAME = 26 * 1024 * 1024;
+const FRAME_TIMEOUT_MS = 60_000;
 const GATHER_TIMEOUT_MS = 3000;
 export const PUBLIC_STUN = 'stun:stun.l.google.com:19302';
 
@@ -19,7 +21,7 @@ export interface PeerHandlers {
 export class PeerLink {
 	private pc: RTCPeerConnection;
 	private dc: RTCDataChannel | null = null;
-	private incoming: { buf: Uint8Array; off: number } | null = null;
+	private incoming: { buf: Uint8Array; off: number; timer: ReturnType<typeof setTimeout> } | null = null;
 	closed = false;
 
 	constructor(
@@ -90,8 +92,9 @@ export class PeerLink {
 		if (!this.incoming) {
 			if (chunk.length !== 4) return; // protocol violation → drop
 			const len = new DataView(chunk.buffer, chunk.byteOffset).getUint32(0, false);
-			if (len > 64 * 1024 * 1024) return this.close();
-			this.incoming = { buf: new Uint8Array(len), off: 0 };
+			if (len > MAX_FRAME) return this.close();
+			const timer = setTimeout(() => this.close(), FRAME_TIMEOUT_MS); // stalled frame → drop link
+			this.incoming = { buf: new Uint8Array(len), off: 0, timer };
 			if (len === 0) this.finishFrame();
 			return;
 		}
@@ -104,6 +107,7 @@ export class PeerLink {
 
 	private finishFrame(): void {
 		const buf = this.incoming!.buf;
+		clearTimeout(this.incoming!.timer);
 		this.incoming = null;
 		this.handlers.onMessage(buf);
 	}

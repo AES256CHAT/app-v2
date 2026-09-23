@@ -71,7 +71,7 @@
 
 	async function copyOut() {
 		await copyText(output);
-		toast.show(t('copied'));
+		toast.show(mode === 'decrypt' ? t('pwPlainCopied') : t('copied'));
 	}
 
 	function onFile(e: Event) {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { FILE_MIME } from '$lib/crypto/fileenvelope';
+	import { safeMime } from '$lib/crypto/message';
 	import { t } from '$lib/i18n/index.svelte';
 	import { formatBytes, isImage } from '$lib/media/image';
 	import { messages, type ChatMessage } from '$lib/store/messages.svelte';
@@ -17,7 +18,7 @@
 	async function saveDecrypted() {
 		const att = await messages.attachment(msg.id);
 		if (!att || !msg.file) return;
-		download(new Blob([att.plain as BlobPart], { type: msg.file.mime }), msg.file.name);
+		download(new Blob([att.plain as BlobPart], { type: safeMime(msg.file.mime) }), msg.file.name);
 	}
 
 	/** Outgoing: hand the encrypted .aes256 file out again. */

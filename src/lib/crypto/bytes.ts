@@ -44,6 +44,16 @@ export function u32be(n: number): Uint8Array {
 	return b;
 }
 
+export function u64be(n: number): Uint8Array {
+	const b = new Uint8Array(8);
+	new DataView(b.buffer).setBigUint64(0, BigInt(Math.max(0, Math.floor(n))), false);
+	return b;
+}
+
+export function readU64be(b: Uint8Array, off: number): number {
+	return Number(new DataView(b.buffer, b.byteOffset + off, 8).getBigUint64(0, false));
+}
+
 export function readU32be(b: Uint8Array, off: number): number {
 	return new DataView(b.buffer, b.byteOffset + off, 4).getUint32(0, false);
 }

@@ -52,10 +52,13 @@ export async function nativeReadClipboard(): Promise<string | null> {
 export async function registerNativeHandlers(onFile: (bytes: Uint8Array, name: string) => void, onText: (text: string) => void): Promise<void> {
 	if (!isNative()) return;
 	const { App } = await import('@capacitor/app');
-	const { Filesystem } = await import('@capacitor/filesystem');
+	const { Filesystem, Directory } = await import('@capacitor/filesystem');
+	// Leftover encrypted share files from a previous run (app killed before the delayed delete).
+	Filesystem.rmdir({ path: 'share', directory: Directory.Cache, recursive: true }).catch(() => {});
 	App.addListener('appUrlOpen', async ({ url }) => {
 		try {
-			if (url.startsWith('content://') || url.startsWith('file://')) {
+			// content:// only — file:// would let another app point us at our own private files.
+			if (url.startsWith('content://')) {
 				const r = await Filesystem.readFile({ path: url });
 				const data = typeof r.data === 'string' ? Uint8Array.from(atob(r.data), (c) => c.charCodeAt(0)) : new Uint8Array(await r.data.arrayBuffer());
 				onFile(data, url.split('/').pop() ?? 'file.aes256');

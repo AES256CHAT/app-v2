@@ -10,6 +10,10 @@ function fresh() {
 	return new Vault(`test-${Date.now()}-${n++}`);
 }
 
+async function expireLockout(v: Vault) {
+	await (v as unknown as { db: { meta: { update: (id: string, p: object) => Promise<number> } } }).db.meta.update('v1', { lockoutUntil: 0 });
+}
+
 describe('vault', () => {
 	let v: Vault;
 	beforeEach(async () => {
@@ -24,7 +28,7 @@ describe('vault', () => {
 		await v.put('messages', 'm1', { body: 'hi' }, { k1: 'c1', ts: 1 });
 		await v.put('messages', 'm2', { body: 'yo' }, { k1: 'c1', ts: 2 });
 		expect(await v.get('contacts', 'c1')).toEqual({ name: 'Bob' });
-		expect((await v.list<{ body: string }>('messages', { k1: 'c1' })).map((m) => m.value.body)).toEqual(['hi', 'yo']);
+		expect((await v.list<{ body: string }>('messages', { k1: 'c1' })).map((m) => m.value.body).sort()).toEqual(['hi', 'yo']);
 
 		v.lock();
 		expect(v.status).toBe('locked');
@@ -50,8 +54,8 @@ describe('vault', () => {
 		await expect(v.unlock('wrong passphrase')).rejects.toThrow(AuthError); // 3rd → 30 s lockout
 		expect(v.info?.lockoutUntil).toBeGreaterThan(Date.now());
 		await expect(v.unlock(PW)).rejects.toThrow(LockoutError);
-		// Simulate lockout expiry.
-		(v as unknown as { meta: { lockoutUntil: number } }).meta.lockoutUntil = 0;
+		// Simulate lockout expiry (the counter lives in the DB, not in memory).
+		await expireLockout(v);
 		await v.unlock(PW);
 		expect(v.info?.failedAttempts).toBe(0);
 	});
@@ -61,20 +65,25 @@ describe('vault', () => {
 		await v.put('contacts', 'c1', { name: 'Bob' });
 		v.lock();
 		for (let i = 0; i < 9; i++) {
-			(v as unknown as { meta: { lockoutUntil: number } }).meta.lockoutUntil = 0;
+			await expireLockout(v);
 			await expect(v.unlock('nope nope nope')).rejects.toThrow(AuthError);
 		}
-		(v as unknown as { meta: { lockoutUntil: number } }).meta.lockoutUntil = 0;
+		await expireLockout(v);
 		await expect(v.unlock('nope nope nope')).rejects.toThrow(DestroyedError);
 		expect(v.status).toBe('none');
 		expect(await v.init()).toBe('none');
 	});
 
-	it('changes the passphrase and keeps data', async () => {
+	it('changes the passphrase, rotates the DEK and re-encrypts records', async () => {
 		await v.create(PW, { history: 'persist' });
 		await v.put('contacts', 'c1', { name: 'Bob' });
+		const inner = v as unknown as { dek: Uint8Array; db: { records: { toArray: () => Promise<{ ct: Uint8Array }[]> } } };
+		const dekBefore = inner.dek.slice();
+		const ctBefore = (await inner.db.records.toArray())[0].ct.slice();
 		await expect(v.changePassphrase('wrong passphrase', 'new passphrase 123')).rejects.toThrow(AuthError);
 		await v.changePassphrase(PW, 'new passphrase 123');
+		expect(inner.dek).not.toEqual(dekBefore);
+		expect((await inner.db.records.toArray())[0].ct).not.toEqual(ctBefore);
 		v.lock();
 		await expect(v.unlock(PW)).rejects.toThrow(AuthError);
 		await v.unlock('new passphrase 123');
@@ -87,9 +96,19 @@ describe('vault', () => {
 		await v.put('messages', 'old', { body: 'old' }, { k1: 'c1', ts: now - 8 * 86_400_000 });
 		await v.put('messages', 'new', { body: 'new' }, { k1: 'c1', ts: now });
 		expect(await v.pruneMessages(now)).toBe(1);
-		expect((await v.list('messages', { k1: 'c1' })).map((m) => m.id)).toEqual(['new']);
+		expect((await v.list<{ body: string }>('messages', { k1: 'c1' })).map((m) => m.value.body)).toEqual(['new']);
 		await v.updateSettings({ history: 'ephemeral' });
 		expect(await v.list('messages')).toEqual([]);
+	});
+
+	it('a killed attempt still counts and a second instance sees the lockout', async () => {
+		await v.create(PW, { history: 'ephemeral' });
+		const name = (v as unknown as { db: { name: string } }).db.name;
+		v.lock();
+		for (let i = 0; i < 3; i++) await expect(v.unlock('wrong passphrase')).rejects.toThrow(AuthError);
+		const other = new Vault(name);
+		await other.init();
+		await expect(other.unlock(PW)).rejects.toThrow(LockoutError);
 	});
 
 	it('lockout schedule', () => {

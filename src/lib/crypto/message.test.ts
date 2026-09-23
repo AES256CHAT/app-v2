@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { randomBytes, utf8 } from './bytes';
 import { envelopeFileName, isFileEnvelope, unwrapFileEnvelope, wrapFileEnvelope } from './fileenvelope';
-import { decodePlain, encodePlain, sanitizeName } from './message';
+import { decodePlain, encodePlain, safeMime, sanitizeName } from './message';
 
 describe('plain body framing', () => {
 	it('round-trips text', () => {
@@ -26,9 +26,19 @@ describe('plain body framing', () => {
 	});
 
 	it('sanitises received file names', () => {
-		expect(sanitizeName('../../etc/passwd')).toBe('.._.._etc_passwd');
+		expect(sanitizeName('../../etc/passwd')).toBe('_.._etc_passwd');
 		expect(sanitizeName('a\u0000b\n.txt')).toBe('ab.txt');
 		expect(sanitizeName('   ')).toBe('file');
+		expect(sanitizeName('rechnung\u202Efdp.apk')).toBe('rechnungfdp.apk');
+		expect(sanitizeName('...hidden')).toBe('hidden');
+	});
+
+	it('only honours allow-listed MIME types', () => {
+		expect(safeMime('image/png')).toBe('image/png');
+		expect(safeMime('IMAGE/JPEG')).toBe('image/jpeg');
+		expect(safeMime('text/html')).toBe('application/octet-stream');
+		expect(safeMime('image/svg+xml')).toBe('application/octet-stream');
+		expect(safeMime(42)).toBe('application/octet-stream');
 	});
 });
 

@@ -68,7 +68,12 @@ function generateDh(): KeyPair {
 }
 
 function dh(pair: KeyPair, pub: Uint8Array): Uint8Array {
-	return x25519.getSharedSecret(pair.sec, pub);
+	try {
+		return x25519.getSharedSecret(pair.sec, pub);
+	} catch {
+		// low-order / malformed public key in a header → treat like a failed authentication
+		throw new AuthError();
+	}
 }
 
 // --- Header codec ----------------------------------------------------------------------------

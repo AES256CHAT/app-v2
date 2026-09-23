@@ -49,7 +49,7 @@ export function decodePlain(bytes: Uint8Array): Plain {
 		return {
 			t: 'file',
 			name: sanitizeName(meta.name),
-			mime: typeof meta.mime === 'string' ? meta.mime : 'application/octet-stream',
+			mime: safeMime(meta.mime),
 			size: data.length,
 			ts: meta.ts,
 			data
@@ -67,9 +67,18 @@ export function decodePlain(bytes: Uint8Array): Plain {
 export function sanitizeName(name: string): string {
 	const cleaned = name
 		.replace(/[\\/]/g, '_')
+		// control chars and Unicode bidi/format controls (RTL-override spoofing like "rechnung\u202Efdp.apk")
 		// eslint-disable-next-line no-control-regex
-		.replace(/[\u0000-\u001f\u007f]/g, '')
+		.replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '')
+		.replace(/^\.+/, '')
 		.trim()
 		.slice(0, MAX_NAME_CHARS);
 	return cleaned || 'file';
+}
+
+const MIME_ALLOW = /^(image\/(jpeg|png|webp|gif|avif|bmp)|video\/(mp4|webm|quicktime)|audio\/(mpeg|ogg|wav|mp4|aac|webm)|application\/(pdf|zip|json|gzip|x-7z-compressed)|text\/(plain|csv|markdown))$/i;
+
+/** Sender-supplied MIME types are only honoured from an allowlist; anything else is opaque. */
+export function safeMime(mime: unknown): string {
+	return typeof mime === 'string' && MIME_ALLOW.test(mime) ? mime.toLowerCase() : 'application/octet-stream';
 }

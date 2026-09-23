@@ -83,6 +83,18 @@ Argon2id. Failed unlocks are counted in plaintext metadata (they must be counted
 locked): no delay for the first two, then 30 s doubling up to 30 min. With the opt-in
 self-destruct, the tenth failure deletes the database.
 
+The failed-attempt counter is incremented in a database transaction *before* the KDF runs,
+so killing the app mid-attempt or racing a second tab cannot skip it. Be clear about what
+this buys: the lockout and the self-destruct only defend against guessing **through the app**.
+Whoever copies the database can brute-force the passphrase offline at Argon2id speed
+(≈ 0.2 s per guess on a desktop, no lockout). The real protection is therefore the passphrase
+itself — hence the 12-character minimum, and the recommendation to use a long phrase.
+
+Index columns (`id`, `k1`) are HMAC-SHA-256 values under a separate index key that is wrapped
+together with the DEK, and `ts` is rounded to the hour; a forensic reader of the database sees
+neither contact IDs nor exact timestamps. A passphrase change rotates the DEK and re-encrypts
+every record.
+
 While unlocked the DEK lives in memory only. The app locks after 2 minutes of inactivity
 (configurable), 30 s after being hidden, and blurs its content whenever the window loses
 focus. On Android `FLAG_SECURE` blocks screenshots, screen recording and the recents

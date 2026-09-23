@@ -2,6 +2,9 @@
 
 import { PartAssembler, parseEnvelope, type EnvelopeKind } from '$lib/crypto/envelope';
 import { isFileEnvelope, unwrapFileEnvelope } from '$lib/crypto/fileenvelope';
+import { MAX_FILE_BYTES } from '$lib/crypto/message';
+
+const MAX_IMPORT_BYTES = MAX_FILE_BYTES + 4096;
 import { readClipboardText } from '$lib/transport/share';
 import { live } from './live.svelte';
 import { messages, NoMatchingContactError, type ChatMessage } from './messages.svelte';
@@ -52,6 +55,7 @@ class InboxState {
 
 	/** An .aes256 attachment file (share target, "open with", or file picker). */
 	async importFile(file: File | Blob): Promise<ImportResult> {
+		if (file.size > MAX_IMPORT_BYTES) return { type: 'error', message: 'file too large' };
 		const bytes = new Uint8Array(await file.arrayBuffer());
 		if (isFileEnvelope(bytes)) return this.receiveMessage(unwrapFileEnvelope(bytes));
 		// Maybe a text envelope saved as .txt

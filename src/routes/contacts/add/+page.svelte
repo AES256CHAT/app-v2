@@ -8,13 +8,14 @@
 	import { HandshakeError, peekOffer, type Contact } from '$lib/crypto/handshake';
 	import { bundleOf, contactId } from '$lib/crypto/identity';
 	import { t } from '$lib/i18n/index.svelte';
-	import { contacts, type ContactRecord, type OfferRecord } from '$lib/store/contacts.svelte';
+	import { SessionExistsError, contacts, type ContactRecord, type OfferRecord } from '$lib/store/contacts.svelte';
 	import { inbox } from '$lib/store/inbox.svelte';
 	import { loadMe, type Me } from '$lib/vault/me';
 
 	type Step =
 		| { s: 'tabs' }
-		| { s: 'confirm'; contact: Contact; offer: Uint8Array }
+		| { s: 'confirm'; contact: Contact; offer: Uint8Array; replace?: boolean }
+		| { s: 'replace'; name: string; retry: () => Promise<void> }
 		| { s: 'answer'; answer: Uint8Array; contact: ContactRecord }
 		| { s: 'done'; contact: ContactRecord };
 
@@ -54,29 +55,40 @@
 		}
 	}
 
-	async function confirmAdd() {
+	async function confirmAdd(replace = false) {
 		if (!me || step.s !== 'confirm') return;
+		const offer = step.offer;
 		busy = true;
 		try {
-			const r = await contacts.acceptOffer(me, step.offer);
+			const r = await contacts.acceptOffer(me, offer, replace);
 			step = { s: 'answer', answer: r.answer, contact: r.contact };
 		} catch (e) {
-			error = e instanceof HandshakeError ? t('addErrGeneric') : (e as Error).message;
+			if (e instanceof SessionExistsError) {
+				const prev = step;
+				step = { s: 'replace', name: e.contact.name, retry: async () => ((step = prev), confirmAdd(true)) };
+				return;
+			}
+			error = e instanceof HandshakeError ? (/expired/.test(e.message) ? t('addErrExpired') : t('addErrGeneric')) : (e as Error).message;
 			step = { s: 'tabs' };
 		} finally {
 			busy = false;
 		}
 	}
 
-	async function finalize(answer: Uint8Array) {
+	async function finalize(answer: Uint8Array, replace = false) {
 		if (!me) return;
 		busy = true;
 		try {
-			const c = await contacts.finalizeAnswer(me, answer);
+			const c = await contacts.finalizeAnswer(me, answer, replace);
 			step = { s: 'done', contact: c };
 		} catch (e) {
+			if (e instanceof SessionExistsError) {
+				step = { s: 'replace', name: e.contact.name, retry: () => finalize(answer, true) };
+				return;
+			}
 			const msg = (e as Error).message;
-			error = msg === 'offer-not-found' ? t('addErrOffer') : e instanceof HandshakeError ? t('addErrGeneric') : msg;
+			error =
+				msg === 'offer-not-found' ? t('addErrOffer') : msg === 'answer-used' ? t('addErrUsed') : e instanceof HandshakeError ? t('addErrGeneric') : msg;
 		} finally {
 			busy = false;
 		}
@@ -115,7 +127,16 @@
 			<code class="text-muted font-mono text-sm">{step.contact.id.match(/.{4}/g)?.join('-')}</code>
 			<div class="flex justify-center gap-3">
 				<button class="btn-secondary" onclick={() => (step = { s: 'tabs' })}>{t('cancel')}</button>
-				<button class="btn-primary" onclick={confirmAdd} disabled={busy}>{t('addConfirmYes')}</button>
+				<button class="btn-primary" onclick={() => confirmAdd()} disabled={busy}>{t('addConfirmYes')}</button>
+			</div>
+		</section>
+	{:else if step.s === 'replace'}
+		<section class="bg-surface border-warn flex flex-col gap-4 rounded-2xl border p-5 text-center" data-testid="replace">
+			<h2 class="text-lg font-semibold">{t('addReplaceTitle')}</h2>
+			<p class="text-sm">{t('addReplaceBody', { name: step.name })}</p>
+			<div class="flex justify-center gap-3">
+				<button class="btn-secondary" onclick={() => (step = { s: 'tabs' })}>{t('cancel')}</button>
+				<button class="btn-primary" onclick={() => step.s === 'replace' && step.retry()} disabled={busy}>{t('addReplaceYes')}</button>
 			</div>
 		</section>
 	{:else if step.s === 'answer'}

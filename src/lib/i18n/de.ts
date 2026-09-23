@@ -55,6 +55,11 @@ export const de = {
 	addErrOffer: 'Dieser Antwort-Code passt zu keinem deiner Codes. Zeige deinen Code erneut und lass ihn neu scannen.',
 	addErrGeneric: 'Code konnte nicht verarbeitet werden.',
 	addSelf: 'Das ist dein eigener Code.',
+	addErrExpired: 'Dieser Code ist abgelaufen (älter als 7 Tage). Bitte einen neuen Code zeigen lassen.',
+	addErrUsed: 'Dieser Antwort-Code wurde bereits verwendet.',
+	addReplaceTitle: 'Bestehende Verbindung ersetzen?',
+	addReplaceBody: 'Mit {name} besteht bereits eine verschlüsselte Verbindung mit Nachrichten. Ein neuer Code setzt die Sitzung zurück – ältere, noch nicht eingefügte Umschläge lassen sich danach nicht mehr lesen. Nur fortfahren, wenn ihr das beide gerade absichtlich macht.',
+	addReplaceYes: 'Ersetzen',
 	// scan component
 	scanNoCamera: 'Keine Kamera verfügbar – füge den Code als Text ein.',
 	scanProgress: 'Bild {have} von {total} erfasst …',
@@ -153,6 +158,7 @@ export const de = {
 	pwPassword: 'Gemeinsames Passwort',
 	pwPlainPlaceholder: 'Text …',
 	pwPickFile: 'Datei wählen (max. 10 MB)',
+	pwPlainCopied: 'Klartext kopiert – Vorsicht, die Zwischenablage ist für andere Apps lesbar (wird in 60 s geleert).',
 	pwDecryptFailed: 'Entschlüsselung fehlgeschlagen – falsches Passwort oder beschädigte Daten.',
 	// general
 	back: 'Zurück',

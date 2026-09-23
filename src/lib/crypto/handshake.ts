@@ -12,7 +12,7 @@ import { x25519 } from '@noble/curves/ed25519.js';
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { sha256, sha512 } from '@noble/hashes/sha2.js';
-import { concat, equalBytes, packLp, readLp, utf8, wipe } from './bytes';
+import { concat, equalBytes, packLp, readLp, readU64be, u64be, utf8, wipe } from './bytes';
 import {
 	BUNDLE_LEN,
 	KEM_PUB_LEN,
@@ -71,7 +71,7 @@ export function offerHash(offer: Uint8Array): Uint8Array {
 }
 
 // --- Offer -----------------------------------------------------------------------------------------
-// layout: v(1) ‖ bundle(64) ‖ kemPub(1184) ‖ eph(32) ‖ lp(name) ‖ sig(64)
+// layout: v(1) ‖ bundle(64) ‖ kemPub(1184) ‖ eph(32) ‖ ts(8, ms since epoch) ‖ lp(name) ‖ sig(64)
 
 export function createOffer(me: Identity, myName: string): PendingOffer {
 	const eph = ephemeral();
@@ -80,6 +80,7 @@ export function createOffer(me: Identity, myName: string): PendingOffer {
 		encodeBundle(bundleOf(me)),
 		me.kem.pub,
 		eph.pub,
+		u64be(Date.now()),
 		packLp(encodeName(myName))
 	);
 	const sig = sign(me, concat(TAG_OFFER, body));
@@ -90,11 +91,12 @@ interface ParsedOffer {
 	bundle: PublicBundle;
 	kemPub: Uint8Array;
 	eph: Uint8Array;
+	ts: number;
 	name: string;
 }
 
 function parseOffer(offer: Uint8Array): ParsedOffer {
-	const minLen = 1 + BUNDLE_LEN + KEM_PUB_LEN + X_PUB_LEN + 2 + SIG_LEN;
+	const minLen = 1 + BUNDLE_LEN + KEM_PUB_LEN + X_PUB_LEN + 8 + 2 + SIG_LEN;
 	if (offer.length < minLen) throw new HandshakeError('offer too short');
 	if (offer[0] !== VERSION) throw new HandshakeError('unsupported offer version');
 	let off = 1;
@@ -104,11 +106,13 @@ function parseOffer(offer: Uint8Array): ParsedOffer {
 	off += KEM_PUB_LEN;
 	const eph = offer.slice(off, off + X_PUB_LEN);
 	off += X_PUB_LEN;
+	const ts = readU64be(offer, off);
+	off += 8;
 	const { value: nameBytes, next } = readLp(offer, off);
 	const sig = offer.slice(next);
 	if (sig.length !== SIG_LEN) throw new HandshakeError('malformed offer');
 	if (!verify(bundle.ed, concat(TAG_OFFER, offer.slice(0, next)), sig)) throw new HandshakeError('bad offer signature');
-	return { bundle, kemPub, eph, name: utf8.decode(nameBytes) };
+	return { bundle, kemPub, eph, ts, name: utf8.decode(nameBytes) };
 }
 
 /** Read-only peek so the UI can show "Add <name>?" before committing. */
@@ -132,19 +136,23 @@ export function answerOfferHash(answer: Uint8Array): Uint8Array {
 export function acceptOffer(
 	me: Identity,
 	myName: string,
-	offer: Uint8Array
+	offer: Uint8Array,
+	maxAgeMs = Number.POSITIVE_INFINITY
 ): { answer: Uint8Array; session: RatchetState; contact: Contact } {
 	const o = parseOffer(offer);
+	// Stale codes are refused: the initiator has long discarded the ephemeral secret.
+	if (Date.now() - o.ts > maxAgeMs || o.ts - Date.now() > 86_400_000) throw new HandshakeError('offer expired');
 	const myBundle = bundleOf(me);
 	if (equalBytes(encodeBundle(o.bundle), encodeBundle(myBundle))) throw new HandshakeError('cannot add yourself');
 
 	const eph = ephemeral();
 	const { cipherText, sharedSecret: kemSs } = ml_kem768.encapsulate(o.kemPub);
 
-	const dh1 = x25519.getSharedSecret(me.x.sec, o.bundle.x); // DH(idA, idB)
-	const dh2 = x25519.getSharedSecret(me.x.sec, o.eph); //      DH(ephA, idB)
-	const dh3 = x25519.getSharedSecret(eph.sec, o.bundle.x); //  DH(idA, ephB)
-	const dh4 = x25519.getSharedSecret(eph.sec, o.eph); //       DH(ephA, ephB)
+	// Bob's view (me = B): dh1 = DH(idA,idB), dh2 = DH(ephA,idB), dh3 = DH(idA,ephB), dh4 = DH(ephA,ephB)
+	const dh1 = x25519.getSharedSecret(me.x.sec, o.bundle.x);
+	const dh2 = x25519.getSharedSecret(me.x.sec, o.eph);
+	const dh3 = x25519.getSharedSecret(eph.sec, o.bundle.x);
+	const dh4 = x25519.getSharedSecret(eph.sec, o.eph);
 	const { sk, bobChain } = deriveSecrets(dh1, dh2, dh3, dh4, kemSs);
 	wipe(dh1, dh2, dh3, dh4, kemSs);
 

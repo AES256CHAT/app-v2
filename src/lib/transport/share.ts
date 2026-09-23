@@ -14,7 +14,7 @@ export async function copyText(text: string, clearAfterMs = 60_000): Promise<voi
 			try {
 				// Only clear if the clipboard still holds our text.
 				const cur = isNative() ? await nativeReadClipboard() : await navigator.clipboard.readText().catch(() => null);
-				if (cur === null || cur === text) {
+				if (cur === text) {
 					if (isNative()) await nativeWriteClipboard('');
 					else await navigator.clipboard.writeText('');
 				}
