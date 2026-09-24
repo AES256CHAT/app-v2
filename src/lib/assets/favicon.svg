@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#0b0f14"/>
-  <path d="M17 12h30v22L32 52 17 34z" fill="#4ade80"/>
-  <rect x="25.5" y="27.5" width="13" height="10.5" rx="2.2" fill="#0b0f14"/>
-  <path d="M27.8 27.5v-3.6a4.2 4.2 0 0 1 8.4 0v3.6" fill="none" stroke="#0b0f14" stroke-width="2.6"/>
+  <!-- B: Das Siegel — hexagonal seal, stylised A as a keyhole-arrow, minimal and technical -->
+  <rect width="64" height="64" rx="15" fill="#0b0f14"/>
+  <path d="M32 7 L53 19.5 V44.5 L32 57 L11 44.5 V19.5 Z" fill="none" stroke="#4ade80" stroke-width="3.4" stroke-linejoin="round"/>
+  <path d="M32 19 L43 41 H36.6 L32 31.6 L27.4 41 H21 Z" fill="#e6edf3"/>
+  <circle cx="32" cy="41" r="3" fill="#4ade80"/>
 </svg>
