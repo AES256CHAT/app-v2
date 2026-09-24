@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import type { EnvelopeKind } from '$lib/crypto/envelope';
-	import { QR_FRAME_CHARS, QR_FRAME_CHARS_COARSE, qrFrames, type QrFrames } from '$lib/qr/frames';
+	import { qrFrames, type QrFrames } from '$lib/qr/frames';
 	import { canShare, copyText, shareText } from '$lib/transport/share';
 	import { t } from '$lib/i18n/index.svelte';
 
@@ -9,9 +9,8 @@
 		kind,
 		payload,
 		hint = '',
-		coarse = false,
 		compact = false
-	}: { kind: EnvelopeKind; payload: Uint8Array; hint?: string; coarse?: boolean; compact?: boolean } = $props();
+	}: { kind: EnvelopeKind; payload: Uint8Array; hint?: string; compact?: boolean } = $props();
 
 	let frames = $state<QrFrames | null>(null);
 	let index = $state(0);
@@ -24,7 +23,7 @@
 		let cancelled = false;
 		frames = null;
 		index = 0;
-		qrFrames(k, p, 320, coarse ? QR_FRAME_CHARS_COARSE : QR_FRAME_CHARS).then((f) => {
+		qrFrames(k, p).then((f) => {
 			if (!cancelled) frames = f;
 		});
 		return () => {
@@ -36,7 +35,7 @@
 		if (timer) clearInterval(timer);
 		timer = null;
 		const n = frames?.images.length ?? 0;
-		if (n > 1) timer = setInterval(() => (index = (index + 1) % n), coarse ? 500 : 700);
+		if (n > 1) timer = setInterval(() => (index = (index + 1) % n), 700);
 	});
 
 	onDestroy(() => {

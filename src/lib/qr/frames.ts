@@ -11,9 +11,6 @@ export interface QrFrames {
 	images: string[]; // data: URLs
 }
 
-/** Coarser frames for phone-to-phone scanning with fixed-focus front cameras. */
-export const QR_FRAME_CHARS_COARSE = 190;
-
 export async function qrFrames(kind: EnvelopeKind, payload: Uint8Array, size = 320, chars = QR_FRAME_CHARS): Promise<QrFrames> {
 	const texts = encodeEnvelope(kind, payload, chars);
 	const images = await Promise.all(

@@ -36,11 +36,6 @@ for (const scheme of SCHEMES) {
 			await a.getByTestId('envelope-text').waitFor();
 			await a.waitForTimeout(600);
 			await shot(a, '03_add_default', width, scheme);
-			await a.getByTestId('role-mutual').click();
-			await a.getByTestId('envelope-text').waitFor();
-			await a.waitForTimeout(600);
-			await shot(a, '03b_add_mutual', width, scheme);
-			await a.getByRole('button', { name: /Doch lieber Schritt|Step by step instead/ }).click();
 			await a.getByTestId('role-steps').click();
 			await shot(a, '03_add_role', width, scheme);
 			await a.getByTestId('role-show').click();

@@ -22,14 +22,13 @@ export class QrScanner {
 	constructor(
 		private video: HTMLVideoElement,
 		private onText: (text: string) => void,
-		private intervalMs = 150,
-		private facing: 'environment' | 'user' = 'environment'
+		private intervalMs = 150
 	) {}
 
 	async start(): Promise<void> {
 		prepare();
 		this.stream = await navigator.mediaDevices.getUserMedia({
-			video: { facingMode: { ideal: this.facing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+			video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
 			audio: false
 		});
 		this.video.srcObject = this.stream;
@@ -65,7 +64,7 @@ export class QrScanner {
 		if (!ctx) return;
 		ctx.drawImage(this.video, 0, 0, w, h);
 		const img = ctx.getImageData(0, 0, w, h);
-		const results = await readBarcodes(img, { formats: ['QRCode'], tryHarder: this.facing === 'user', tryRotate: true, maxNumberOfSymbols: 1 });
+		const results = await readBarcodes(img, { formats: ['QRCode'], tryHarder: false, tryRotate: true, maxNumberOfSymbols: 1 });
 		for (const r of results) {
 			if (r.text && r.text !== this.lastText) {
 				this.lastText = r.text;
