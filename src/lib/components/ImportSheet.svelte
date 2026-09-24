@@ -72,6 +72,7 @@
 	}
 
 	let fileInput = $state<HTMLInputElement>();
+	let imageInput = $state<HTMLInputElement>();
 
 	async function onFile(e: Event) {
 		const input = e.currentTarget as HTMLInputElement;
@@ -105,6 +106,8 @@
 				<button class="item" onclick={fromClipboard} disabled={busy}>📋 {t('inboxFromClipboard')}</button>
 				<button class="item" onclick={() => (mode = 'paste')} data-testid="inbox-paste">✍️ {t('inboxPaste')}</button>
 				<button class="item" onclick={() => (mode = 'scan')}>📷 {t('inboxScan')}</button>
+				<button class="item" onclick={() => imageInput?.click()} data-testid="inbox-image">🖼️ {t('inboxImage')}</button>
+				<input bind:this={imageInput} type="file" class="hidden" accept="image/*" onchange={onFile} data-testid="inbox-image-input" />
 				<button class="item" onclick={() => fileInput?.click()} data-testid="inbox-file">📎 {t('inboxFile')}</button>
 				<input bind:this={fileInput} type="file" class="hidden" accept=".aes256,.txt,*/*" onchange={onFile} data-testid="inbox-file-input" />
 			</div>

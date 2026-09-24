@@ -70,6 +70,12 @@ export async function shareOrDownload(bytes: Uint8Array, name: string, mime: str
 	return 'downloaded';
 }
 
+/** Share a PNG (or any blob) through the share sheet, else download it. */
+export async function shareOrDownloadBlob(blob: Blob, name: string): Promise<'shared' | 'downloaded' | 'cancelled'> {
+	const bytes = new Uint8Array(await blob.arrayBuffer());
+	return shareOrDownload(bytes, name, blob.type || 'application/octet-stream');
+}
+
 export function download(blob: Blob, name: string): void {
 	const url = URL.createObjectURL(blob);
 	const a = document.createElement('a');

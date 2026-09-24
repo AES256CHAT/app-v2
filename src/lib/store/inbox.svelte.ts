@@ -3,6 +3,7 @@
 import { PartAssembler, parseEnvelope, type EnvelopeKind } from '$lib/crypto/envelope';
 import { isFileEnvelope, unwrapFileEnvelope } from '$lib/crypto/fileenvelope';
 import { MAX_FILE_BYTES } from '$lib/crypto/message';
+import { decodeImage, isImageBytes } from '$lib/qr/decode-image';
 
 const MAX_IMPORT_BYTES = MAX_FILE_BYTES + 4096;
 import { readClipboardText } from '$lib/transport/share';
@@ -58,6 +59,12 @@ class InboxState {
 		if (file.size > MAX_IMPORT_BYTES) return { type: 'error', message: 'file too large' };
 		const bytes = new Uint8Array(await file.arrayBuffer());
 		if (isFileEnvelope(bytes)) return this.receiveMessage(unwrapFileEnvelope(bytes));
+		// A picture (shared QR sheet, screenshot, photo): decode every code in it.
+		if (isImageBytes(bytes)) {
+			const texts = await decodeImage(new Blob([bytes as BlobPart]));
+			if (texts.length === 0) return { type: 'unknown' };
+			return this.importText(texts.join('\n'));
+		}
 		// Maybe a text envelope saved as .txt
 		if (bytes.length < 2_000_000) {
 			const text = new TextDecoder().decode(bytes);

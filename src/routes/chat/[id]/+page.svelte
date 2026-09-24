@@ -15,7 +15,8 @@
 	import { live } from '$lib/store/live.svelte';
 	import { messages, type ChatMessage } from '$lib/store/messages.svelte';
 	import { toast } from '$lib/store/toast.svelte';
-	import { canShare, copyText, shareOrDownload, shareText } from '$lib/transport/share';
+	import { canShare, copyText, shareOrDownload, shareOrDownloadBlob, shareText } from '$lib/transport/share';
+	import { qrSheetPng } from '$lib/qr/sheet';
 	import { vault } from '$lib/vault/vault.svelte';
 
 	const id = $derived(page.params.id ?? '');
@@ -104,6 +105,16 @@
 		}
 	}
 
+	async function shareAsImage(m: ChatMessage) {
+		const sheet = await qrSheetPng('msg', payloadOf(m), { title: t('sheetTitle'), hint: t('sheetHint'), ts: m.ts });
+		const how = await shareOrDownloadBlob(sheet.blob, sheet.fileName);
+		if (how === 'shared') await messages.setStatus(m, 'shared');
+		if (how === 'downloaded') {
+			await messages.setStatus(m, 'downloaded');
+			toast.show(t('sheetSaved', { name: sheet.fileName }));
+		}
+	}
+
 	function statusLabel(m: ChatMessage): string {
 		switch (m.status) {
 			case 'copied':
@@ -171,6 +182,7 @@
 								<button class="underline" onclick={() => deliver(m, 'copy')}>{t('copy')}</button>
 								{#if canShare()}<button class="underline" onclick={() => deliver(m, 'share')}>{t('share')}</button>{/if}
 								<button class="underline" onclick={() => (qrFor = m)}>QR</button>
+								<button class="underline" onclick={() => shareAsImage(m)} data-testid="msg-image">{t('shareImage')}</button>
 							{/if}
 						{/if}
 					</div>

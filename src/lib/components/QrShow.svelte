@@ -2,7 +2,8 @@
 	import { onDestroy } from 'svelte';
 	import type { EnvelopeKind } from '$lib/crypto/envelope';
 	import { qrFrames, type QrFrames } from '$lib/qr/frames';
-	import { canShare, copyText, shareText } from '$lib/transport/share';
+	import { canShare, copyText, shareOrDownloadBlob, shareText } from '$lib/transport/share';
+	import { qrSheetPng } from '$lib/qr/sheet';
 	import { t } from '$lib/i18n/index.svelte';
 
 	let {
@@ -44,6 +45,12 @@
 
 	const fullText = $derived(frames ? frames.texts.join('\n') : '');
 
+	async function shareImage() {
+		if (!frames) return;
+		const sheet = await qrSheetPng(kind, payload, { title: t('sheetTitle'), hint: t('sheetHint') });
+		await shareOrDownloadBlob(sheet.blob, sheet.fileName);
+	}
+
 	async function copy() {
 		await copyText(fullText);
 		copied = true;
@@ -68,6 +75,7 @@
 		{#if canShare()}
 			<button class="btn" onclick={() => shareText(fullText)} disabled={!frames}>{t('share')}</button>
 		{/if}
+		<button class="btn" onclick={shareImage} disabled={!frames} data-testid="share-image">{t('shareImage')}</button>
 	</div>
 	<textarea class="sr-only" readonly data-testid="envelope-text" value={fullText}></textarea>
 </div>

@@ -133,6 +133,11 @@ export const de = {
 	statusCopied: 'kopiert',
 	statusShared: 'geteilt',
 	copy: 'Kopieren',
+	shareImage: 'Als Bild',
+	sheetTitle: 'AES256CHAT – verschlüsselte Nachricht',
+	sheetHint: 'Bild antippen → Teilen → AES256CHAT (oder in der App „Bild importieren“)',
+	sheetSaved: 'QR-Bild gespeichert: {name} – jetzt z. B. per Telegram als Bild senden',
+	inboxImage: 'QR-Bild importieren (Foto/Screenshot)',
 	statusDownloaded: 'als Datei gespeichert',
 	statusDelivered: 'direkt zugestellt',
 	// live link
