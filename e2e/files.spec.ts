@@ -1,48 +1,6 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-
-const PW = 'zehn zeichen mindestens';
-
-async function onboard(page: Page, name: string) {
-	await page.goto('/');
-	await page.getByLabel(/Anzeigename|display name/i).fill(name);
-	const pw = page.locator('input[type="password"]');
-	await pw.nth(0).fill(PW);
-	await pw.nth(1).fill(PW);
-	await page.getByRole('button', { name: /Tresor anlegen|Create vault/ }).click();
-	await page.getByTestId('me').waitFor();
-}
-
-async function envelope(page: Page) {
-	const f = page.getByTestId('envelope-text');
-	await expect(f).not.toHaveValue('', { timeout: 15_000 });
-	return f.inputValue();
-}
-
-async function pasteHandshake(page: Page, text: string) {
-	await page.getByRole('tab', { name: /Code scannen|Scan code/ }).click();
-	const field = page.getByTestId('paste-field');
-	if (!(await field.isVisible())) {
-		await page.getByRole('button', { name: /als Text einfügen|Paste code/ }).click({ timeout: 3000 }).catch(() => {});
-	}
-	await field.waitFor();
-	await field.fill(text);
-	await page.getByRole('button', { name: /Übernehmen|Apply/ }).click();
-}
-
-async function connect(a: Page, b: Page) {
-	await a.getByTestId('add-contact').click();
-	const offer = await envelope(a);
-	await b.getByTestId('add-contact').click();
-	await pasteHandshake(b, offer);
-	await b.getByRole('button', { name: /^Hinzufügen$|^Add$/ }).click();
-	const answer = await envelope(b);
-	await pasteHandshake(a, answer);
-	await a.getByTestId('done').waitFor();
-	await a.getByRole('link', { name: /Zurück|Back/ }).click();
-	await b.getByRole('button', { name: /Zum Kontakt|Open contact/ }).click();
-	await b.getByRole('link', { name: /Zurück|Back/ }).click();
-}
+import { connect, onboard } from './helpers';
 
 test('attachments travel as encrypted .aes256 files', async ({ browser }) => {
 	const ctxA = await browser.newContext({ acceptDownloads: true });
@@ -60,8 +18,7 @@ test('attachments travel as encrypted .aes256 files', async ({ browser }) => {
 	await a.getByTestId('file-input').setInputFiles({ name: 'vertrag.txt', mimeType: 'text/plain', buffer: content });
 	const dl = await downloadPromise;
 	expect(dl.suggestedFilename()).toMatch(/^aes256chat-\d{8}-\d{6}\.aes256$/);
-	const encPath = await dl.path();
-	const enc = readFileSync(encPath!);
+	const enc = readFileSync((await dl.path())!);
 	expect(enc.subarray(0, 12).toString()).toBe('A256CHAT-F1\n');
 	expect(enc.includes(Buffer.from('Vertrag Entwurf'))).toBe(false); // ciphertext, not plaintext
 	await expect(a.getByTestId('msg-out').last()).toContainText('vertrag.txt');
@@ -87,7 +44,7 @@ test('attachments travel as encrypted .aes256 files', async ({ browser }) => {
 	await expect(b.getByRole('alert')).toBeVisible();
 	await b.getByTestId('inbox-close').click();
 
-	// An image goes through the downscaler and arrives as JPEG with a preview.
+	// An image goes through the downscaler and arrives with a preview.
 	const png = Buffer.from(
 		'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGP4z8DwHwyBBAMDAB1wBf1zqK5CAAAAAElFTkSuQmCC',
 		'base64'

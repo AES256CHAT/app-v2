@@ -1,47 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-
-const PW = 'zehn zeichen mindestens';
-
-async function onboard(page: Page, name: string) {
-	await page.goto('/');
-	await page.getByLabel(/Anzeigename|display name/i).fill(name);
-	const pw = page.locator('input[type="password"]');
-	await pw.nth(0).fill(PW);
-	await pw.nth(1).fill(PW);
-	await page.getByRole('button', { name: /Tresor anlegen|Create vault/ }).click();
-	await page.getByTestId('me').waitFor();
-}
-
-async function envelope(page: Page) {
-	const f = page.getByTestId('envelope-text');
-	await expect(f).not.toHaveValue('', { timeout: 15_000 });
-	return f.inputValue();
-}
-
-async function pasteHandshake(page: Page, text: string) {
-	await page.getByRole('tab', { name: /Code scannen|Scan code/ }).click();
-	const field = page.getByTestId('paste-field');
-	if (!(await field.isVisible())) {
-		await page.getByRole('button', { name: /als Text einfügen|Paste code/ }).click({ timeout: 3000 }).catch(() => {});
-	}
-	await field.waitFor();
-	await field.fill(text);
-	await page.getByRole('button', { name: /Übernehmen|Apply/ }).click();
-}
-
-async function connect(a: Page, b: Page) {
-	await a.getByTestId('add-contact').click();
-	const offer = await envelope(a);
-	await b.getByTestId('add-contact').click();
-	await pasteHandshake(b, offer);
-	await b.getByRole('button', { name: /^Hinzufügen$|^Add$/ }).click();
-	const answer = await envelope(b);
-	await pasteHandshake(a, answer);
-	await a.getByTestId('done').waitFor();
-	await a.getByRole('link', { name: /Zurück|Back/ }).click();
-	await b.getByRole('button', { name: /Zum Kontakt|Open contact/ }).click();
-	await b.getByRole('link', { name: /Zurück|Back/ }).click();
-}
+import { PW, connect, onboard } from './helpers';
 
 async function sendAndGrab(page: Page, text: string): Promise<string> {
 	await page.getByTestId('composer').fill(text);
@@ -68,7 +26,7 @@ test('text messages travel both ways as envelopes, incl. multi-part and replay r
 	await connect(a, b);
 
 	// A → B
-	await a.getByTestId('contact-list').getByText('Bob').click();
+	await a.getByTestId('contact-list').getByRole('link', { name: /Bob/ }).click();
 	const env1 = await sendAndGrab(a, 'Hallo Bob 👋');
 	expect(env1.startsWith('🛡️MSG:')).toBe(true);
 	await importText(b, 'home-import', env1);
@@ -108,6 +66,6 @@ test('text messages travel both ways as envelopes, incl. multi-part and replay r
 	await a.getByRole('button', { name: /Jetzt sperren|Lock now/ }).click();
 	await a.locator('input[type="password"]').fill(PW);
 	await a.getByRole('button', { name: /Entsperren|Unlock/ }).click();
-	await a.getByTestId('contact-list').getByText('Bob').click();
+	await a.getByTestId('contact-list').getByRole('link', { name: /Bob/ }).click();
 	await expect(a.getByTestId('msg-out')).toHaveCount(0);
 });
