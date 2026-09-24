@@ -79,6 +79,7 @@
 			{busy ? t('onbCreating') : t('onbCreate')}
 		</button>
 	</form>
+	<a href="/restore" class="text-muted self-center text-sm underline" data-testid="onb-restore">{t('onbRestore')}</a>
 </main>
 
 <style>

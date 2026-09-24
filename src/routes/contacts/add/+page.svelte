@@ -4,6 +4,7 @@
 	//   B ("Ich scanne zuerst"): 1 scan code → confirm → 2 show reply → 3 done (when A scanned)
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import HandshakeSketch from '$lib/components/HandshakeSketch.svelte';
 	import QrScan from '$lib/components/QrScan.svelte';
 	import QrShow from '$lib/components/QrShow.svelte';
@@ -29,6 +30,8 @@
 		| { s: 'done'; contact: ContactRecord; side: 'a' | 'b' };
 
 	let me = $state<Me | null>(null);
+	const rekeyId = $derived(page.url.searchParams.get('rekey'));
+	const rekeyContact = $derived(rekeyId ? contacts.get(rekeyId) : undefined);
 	let offer = $state<OfferRecord | null>(null);
 	let step = $state<Step>({ s: 'both' });
 	let error = $state<string | null>(null);
@@ -87,7 +90,7 @@
 		if (!me) return;
 		busy = true;
 		try {
-			const c = await contacts.finalizeAnswer(me, answer, replace);
+			const c = await contacts.finalizeAnswer(me, answer, replace || !!rekeyId);
 			step = { s: 'done', contact: c, side: 'a' };
 		} catch (e) {
 			if (e instanceof SessionExistsError) {
@@ -132,8 +135,13 @@
 
 	{#if step.s === 'both'}
 		<div class="guide">
-			<p class="you">{t('bothYou')}</p>
-			<p class="them">{t('bothThem')}</p>
+			{#if rekeyContact}
+				<p class="you">{t('rekeyYou', { name: rekeyContact.name })}</p>
+				<p class="them">{t('rekeyThem', { name: rekeyContact.name })}</p>
+			{:else}
+				<p class="you">{t('bothYou')}</p>
+				<p class="them">{t('bothThem')}</p>
+			{/if}
 		</div>
 		{#if offer}
 			<QrShow kind="offer" payload={b64uDecode(offer.offer)} />

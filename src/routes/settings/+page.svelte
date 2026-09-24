@@ -4,6 +4,9 @@
 	import { live } from '$lib/store/live.svelte';
 	import { toast } from '$lib/store/toast.svelte';
 	import { MIN_PASSPHRASE_LEN } from '$lib/vault/vault';
+	import { createBackup, inspectBackup, restoreBackup } from '$lib/vault/backup-service';
+	import { shareOrDownload } from '$lib/transport/share';
+	import type { BackupPayload } from '$lib/vault/backup';
 	import { vault, vaultState } from '$lib/vault/vault.svelte';
 	import type { HistoryMode } from '$lib/vault/db';
 
@@ -15,6 +18,67 @@
 	let newPw = $state('');
 	let pwError = $state<string | null>(null);
 	let confirmWipe = $state(false);
+	let bkPw = $state('');
+	let bkCustom = $state(false);
+	let bkMessages = $state(false);
+	let bkBusy = $state(false);
+	let bkError = $state<string | null>(null);
+	let rsFile = $state<File | null>(null);
+	let rsPw = $state('');
+	let rsPayload = $state<BackupPayload | null>(null);
+	let rsError = $state<string | null>(null);
+	let rsBusy = $state(false);
+
+	async function makeBackup(e: SubmitEvent) {
+		e.preventDefault();
+		bkError = null;
+		bkBusy = true;
+		try {
+			// With "use master passphrase" the entered one must really be the master passphrase —
+			// otherwise a typo would silently produce a backup nobody can open.
+			if (!bkCustom && !(await vault.verifyPassphrase(bkPw))) throw new Error(t('lockWrong'));
+			const { bytes, fileName } = await createBackup(bkPw, bkMessages);
+			const how = await shareOrDownload(bytes, fileName, 'application/octet-stream');
+			if (how !== 'cancelled') toast.show(t('bkDone', { name: fileName }));
+			bkPw = '';
+		} catch (err) {
+			bkError = (err as Error).message;
+		} finally {
+			bkBusy = false;
+		}
+	}
+
+	async function inspectRestore(e: SubmitEvent) {
+		e.preventDefault();
+		rsError = null;
+		if (!rsFile) return;
+		rsBusy = true;
+		try {
+			rsPayload = await inspectBackup(new Uint8Array(await rsFile.arrayBuffer()), rsPw);
+		} catch (err) {
+			rsError = err instanceof AuthError ? t('bkWrongPw') : t('bkInvalid');
+		} finally {
+			rsBusy = false;
+		}
+	}
+
+	async function applyRestore() {
+		if (!rsPayload) return;
+		rsBusy = true;
+		try {
+			const p = rsPayload;
+			const pw = rsPw;
+			await vault.destroy();
+			await restoreBackup(p, pw);
+			rsPayload = null;
+			rsPw = '';
+			toast.show(t('bkRestored', { n: p.contacts.length }));
+		} catch (err) {
+			rsError = (err as Error).message;
+		} finally {
+			rsBusy = false;
+		}
+	}
 
 	const autoLockOptions = [1, 2, 5, 10, 30];
 	const retentionOptions = [1, 7, 30, 0];
@@ -123,6 +187,40 @@
 			</div>
 		{/if}
 	</section>
+
+	<form class="card flex flex-col gap-2" onsubmit={makeBackup} data-testid="backup-form">
+		<div class="font-medium">💾 {t('bkTitle')}</div>
+		<p class="text-muted text-xs">{t('bkHint')}</p>
+		<label class="option mt-1" class:selected={!bkCustom}>
+			<input type="checkbox" checked={!bkCustom} onchange={(e) => (bkCustom = !(e.currentTarget as HTMLInputElement).checked)} />
+			<span><b>{t('bkUseMaster')}</b><br /><span class="text-muted text-xs">{t('bkUseMasterHint')}</span></span>
+		</label>
+		<input class="field" type="password" bind:value={bkPw} placeholder={bkCustom ? t('bkCustomPw') : t('lockPass')} autocomplete="off" required data-testid="backup-pw" />
+		{#if info?.history === 'persist'}
+			<label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={bkMessages} /> {t('bkMessages')}</label>
+		{/if}
+		{#if bkError}<p class="text-danger text-sm" role="alert">{bkError}</p>{/if}
+		<button class="btn" type="submit" disabled={bkBusy || bkPw.length < MIN_PASSPHRASE_LEN} data-testid="backup-create">{t('bkCreate')}</button>
+	</form>
+
+	<form class="card flex flex-col gap-2" onsubmit={inspectRestore}>
+		<div class="font-medium">♻️ {t('bkRestoreTitle')}</div>
+		<p class="text-muted text-xs">{t('bkRestoreHint')}</p>
+		<input class="field" type="file" accept=".a256bak" onchange={(e) => (rsFile = (e.currentTarget as HTMLInputElement).files?.[0] ?? null)} data-testid="restore-file" />
+		<input class="field" type="password" bind:value={rsPw} placeholder={t('bkFilePw')} autocomplete="off" required data-testid="restore-pw" />
+		{#if rsError}<p class="text-danger text-sm" role="alert">{rsError}</p>{/if}
+		{#if rsPayload}
+			<div class="bg-surface-2 border-warn rounded-xl border p-3 text-sm" data-testid="restore-confirm">
+				<p>{t('bkRestoreConfirm', { name: rsPayload.me.name, n: rsPayload.contacts.length, date: new Date(rsPayload.createdAt).toLocaleDateString() })}</p>
+				<div class="mt-2 flex gap-2">
+					<button type="button" class="btn" onclick={() => (rsPayload = null)}>{t('cancel')}</button>
+					<button type="button" class="btn text-danger font-semibold" onclick={applyRestore} disabled={rsBusy} data-testid="restore-apply">{t('bkRestoreApply')}</button>
+				</div>
+			</div>
+		{:else}
+			<button class="btn" type="submit" disabled={rsBusy || !rsFile || !rsPw}>{t('bkRestoreCheck')}</button>
+		{/if}
+	</form>
 
 	<a class="card block" href="/tools/password" data-testid="pw-tool-link">
 		<div class="font-medium">🔑 {t('pwTitle')}</div>

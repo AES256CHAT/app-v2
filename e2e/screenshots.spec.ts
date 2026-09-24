@@ -144,3 +144,15 @@ for (const scheme of SCHEMES) {
 		});
 	}
 }
+
+for (const scheme of SCHEMES) {
+	test(`restore screen 390 ${scheme}`, async ({ browser }: { browser: Browser }) => {
+		const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, colorScheme: scheme, locale: 'de-DE' });
+		const p = await ctx.newPage();
+		await p.goto('/');
+		await p.getByTestId('onb-restore').click();
+		await p.getByTestId('restore-file').waitFor();
+		await shot(p, '20_restore_screen', 390, scheme);
+		await ctx.close();
+	});
+}

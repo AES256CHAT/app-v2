@@ -36,9 +36,9 @@
 	$effect(() => {
 		const s = vaultState.status;
 		const p = page.url.pathname;
-		if (s === 'none' && p !== '/onboarding') goto('/onboarding', { replaceState: true });
+		if (s === 'none' && p !== '/onboarding' && p !== '/restore') goto('/onboarding', { replaceState: true });
 		else if (s === 'locked' && p !== '/lock') goto('/lock', { replaceState: true });
-		else if (s === 'unlocked' && (p === '/lock' || p === '/onboarding')) goto('/', { replaceState: true });
+		else if (s === 'unlocked' && (p === '/lock' || p === '/onboarding' || p === '/restore')) goto('/', { replaceState: true });
 	});
 </script>
 

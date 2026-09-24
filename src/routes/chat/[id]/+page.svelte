@@ -162,6 +162,13 @@
 		<button class="text-sm" onclick={() => (showImport = true)} aria-label={t('inboxTitle')} data-testid="chat-import">📥</button>
 	</header>
 
+	{#if contact?.stale}
+		<div class="bg-warn/15 border-warn m-3 rounded-xl border p-3 text-sm" data-testid="stale-banner">
+			<p class="font-medium">{t('staleTitle')}</p>
+			<p class="text-muted mt-1 text-xs">{t('staleText', { name: contact.name })}</p>
+			<a href={`/contacts/add?rekey=${contact.id}`} class="mt-2 inline-block rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-fg" data-testid="rekey">{t('staleAction')}</a>
+		</div>
+	{/if}
 	<section bind:this={scroller} class="flex flex-1 flex-col gap-2 overflow-y-auto px-4 py-3" data-testid="thread">
 		{#if list.length === 0}
 			<p class="text-muted m-auto max-w-xs text-center text-sm">{t('chatEmpty')}</p>
@@ -202,7 +209,7 @@
 			placeholder={t('chatPlaceholder')}
 			data-testid="composer"
 		></textarea>
-		<button class="btn-primary" onclick={send} disabled={busy || !draft.trim()} data-testid="send">{t('chatSend')}</button>
+		<button class="btn-primary" onclick={send} disabled={busy || !draft.trim() || contact?.stale} data-testid="send">{t('chatSend')}</button>
 	</footer>
 </div>
 

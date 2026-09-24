@@ -224,6 +224,18 @@ export class Vault {
 		return secret;
 	}
 
+	/** True when `pw` opens this vault (no state change, no attempt counting). */
+	async verifyPassphrase(pw: string): Promise<boolean> {
+		if (!this.meta) return false;
+		try {
+			wipe(await this.unwrap(pw, this.meta));
+			return true;
+		} catch (e) {
+			if (e instanceof AuthError) return false;
+			throw e;
+		}
+	}
+
 	lock(): void {
 		this.setKeys(null);
 		if (this.meta) this.setStatus('locked');

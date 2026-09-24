@@ -4,7 +4,7 @@ import { b64uDecode, b64uEncode } from '$lib/crypto/bytes';
 import { generateIdentity, identityFromSecrets, type Identity } from '$lib/crypto/identity';
 import { vault } from './vault.svelte';
 
-interface StoredIdentity {
+export interface StoredIdentity {
 	v: 1;
 	edSec: string;
 	xSec: string;
@@ -42,6 +42,21 @@ export async function loadMe(): Promise<Me | null> {
 	if (cache) return cache;
 	const rec = await vault.get<StoredIdentity>('identity', 'me');
 	if (!rec) return null;
+	cache = {
+		identity: identityFromSecrets(b64uDecode(rec.edSec), b64uDecode(rec.xSec), b64uDecode(rec.kemSeed), rec.createdAt),
+		name: rec.name
+	};
+	return cache;
+}
+
+/** Raw stored identity for backups. */
+export async function exportMe(): Promise<StoredIdentity | undefined> {
+	return vault.get<StoredIdentity>('identity', 'me');
+}
+
+/** Restore an identity from a backup (vault must be unlocked and empty). */
+export async function importMe(rec: StoredIdentity): Promise<Me> {
+	await vault.put('identity', 'me', rec);
 	cache = {
 		identity: identityFromSecrets(b64uDecode(rec.edSec), b64uDecode(rec.xSec), b64uDecode(rec.kemSeed), rec.createdAt),
 		name: rec.name

@@ -35,6 +35,8 @@ export interface ContactRecord {
 	lastActivity: number;
 	/** number of messages exchanged; used to warn before a handshake replaces a live session */
 	traffic: number;
+	/** restored from a backup: the ratchet state may be behind the peer → re-pair before sending */
+	stale?: boolean;
 	session: RatchetStateJson;
 }
 
@@ -113,6 +115,7 @@ class ContactsState {
 				createdAt: existing?.createdAt ?? now,
 				lastActivity: now,
 				traffic: 0,
+				stale: false,
 				session: serializeState(session)
 			};
 			await vault.put(T_CONTACTS, rec.id, rec);
@@ -138,6 +141,18 @@ class ContactsState {
 			await vault.deleteWhere('attachments', id);
 			this.items = this.items.filter((c) => c.id !== id);
 		});
+	}
+
+	// --- backup ----------------------------------------------------------------------------------
+
+	async exportAll(): Promise<ContactRecord[]> {
+		return (await vault.list<ContactRecord>(T_CONTACTS)).map((r) => r.value);
+	}
+
+	/** Restored sessions are marked stale: never send on a possibly rolled-back ratchet. */
+	async importAll(records: ContactRecord[]): Promise<void> {
+		for (const r of records) await vault.put(T_CONTACTS, r.id, { ...r, stale: true });
+		await this.refresh();
 	}
 
 	// --- offers (my contact codes) ---------------------------------------------------------------

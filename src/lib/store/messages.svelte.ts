@@ -246,6 +246,16 @@ class MessagesState {
 		return msg;
 	}
 
+	async exportAll(): Promise<ChatMessage[]> {
+		if (!this.persist()) return [];
+		return (await vault.list<ChatMessage>(T)).map((r) => r.value).filter((m) => !m.file);
+	}
+
+	async importAll(list: ChatMessage[]): Promise<void> {
+		if (!this.persist()) return;
+		for (const m of list) await vault.put(T, m.id, m, { k1: m.contactId, ts: m.ts });
+	}
+
 	async clearContact(contactId: string): Promise<void> {
 		for (const m of this.list(contactId)) {
 			this.attachments.delete(m.id);
