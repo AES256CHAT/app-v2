@@ -32,6 +32,12 @@ jobs:
           SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKM" --licenses >/dev/null 2>&1 || true
           "$SDKM" "platforms;android-35" "build-tools;35.0.0" >/dev/null
+      # Stable debug signing key (repository secret) so test APKs can update each other.
+      - run: |
+          mkdir -p ~/.android
+          echo "$DEBUG_KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+        env:
+          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: npx cap sync android
