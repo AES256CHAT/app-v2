@@ -3,8 +3,9 @@
 
 import QRCode from 'qrcode';
 import { encodeEnvelope, type EnvelopeKind } from '$lib/crypto/envelope';
-import { QR_FRAME_CHARS } from './frames';
 
+/** Coarser than on-screen frames: messengers re-encode pictures as JPEG and downscale to ~1280 px. */
+const SHEET_FRAME_CHARS = 400;
 const CELL = 420; // px per QR incl. padding
 const QR = 380;
 const HEADER = 96;
@@ -17,7 +18,7 @@ export interface QrSheet {
 }
 
 export async function qrSheetPng(kind: EnvelopeKind, payload: Uint8Array, opts: { title: string; hint: string; ts?: number }): Promise<QrSheet> {
-	const texts = encodeEnvelope(kind, payload, QR_FRAME_CHARS);
+	const texts = encodeEnvelope(kind, payload, SHEET_FRAME_CHARS);
 	const n = texts.length;
 	const cols = n === 1 ? 1 : 2;
 	const rows = Math.ceil(n / cols);
