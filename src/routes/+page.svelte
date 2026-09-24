@@ -17,6 +17,8 @@
 	let showImport = $state(false);
 
 	onMount(async () => {
+		// The layout guard redirects locked/new vaults; do not touch the vault before that.
+		if (vaultState.status !== 'unlocked') return;
 		const me = await loadMe();
 		if (me) {
 			name = me.name;
