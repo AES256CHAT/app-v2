@@ -1,7 +1,18 @@
 // Thin platform layer: same call sites for web, PWA and Capacitor (Android/iOS).
 
-import { Capacitor } from '@capacitor/core';
-import { b64Encode } from '$lib/crypto/bytes';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+
+interface ShareItem {
+	text?: string;
+	fileName?: string;
+	fileBase64?: string;
+}
+interface ShareReceiverPlugin {
+	getPending(): Promise<{ item: ShareItem | null }>;
+	addListener(event: 'shareReceived', cb: (item: ShareItem) => void): Promise<unknown>;
+}
+const ShareReceiver = registerPlugin<ShareReceiverPlugin>('ShareReceiver');
+import { b64Decode, b64Encode } from '$lib/crypto/bytes';
 
 export function isNative(): boolean {
 	return Capacitor.isNativePlatform();
@@ -55,6 +66,17 @@ export async function registerNativeHandlers(onFile: (bytes: Uint8Array, name: s
 	const { Filesystem, Directory } = await import('@capacitor/filesystem');
 	// Leftover encrypted share files from a previous run (app killed before the delayed delete).
 	Filesystem.rmdir({ path: 'share', directory: Directory.Cache, recursive: true }).catch(() => {});
+
+	// Share sheet / text selection (ShareReceiverPlugin): initial intent and later ones.
+	const handleShared = (item: ShareItem | null) => {
+		if (!item) return;
+		if (item.fileBase64) onFile(b64Decode(item.fileBase64), item.fileName ?? 'shared.aes256');
+		else if (item.text) onText(item.text);
+	};
+	ShareReceiver.getPending()
+		.then((r) => handleShared(r.item))
+		.catch(() => {});
+	ShareReceiver.addListener('shareReceived', handleShared).catch(() => {});
 	App.addListener('appUrlOpen', async ({ url }) => {
 		try {
 			// content:// only — file:// would let another app point us at our own private files.

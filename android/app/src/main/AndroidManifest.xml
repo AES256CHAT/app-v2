@@ -35,6 +35,24 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/vnd.aes256chat" />
             </intent-filter>
+            <!-- Share sheet: "Teilen mit AES256CHAT" for envelope text and .aes256 files -->
+            <intent-filter android:label="@string/app_name">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter android:label="@string/app_name">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/vnd.aes256chat" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <!-- Text selection toolbar: select an envelope anywhere → AES256CHAT -->
+            <intent-filter android:label="@string/app_name">
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
 
         <provider
