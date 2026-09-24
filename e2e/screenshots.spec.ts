@@ -28,6 +28,12 @@ for (const scheme of SCHEMES) {
 
 			await a.goto('/');
 			await shot(a, '01_onboarding', width, scheme);
+			await a.getByTestId('pw1').fill('passwort1234');
+			await shot(a, '01b_onboarding_weak', width, scheme);
+			await a.getByTestId('suggest').click();
+			await shot(a, '01c_onboarding_suggested', width, scheme);
+			await a.getByTestId('pw1').fill('');
+			await a.getByTestId('pw2').fill('');
 			await onboard(a, 'Alice');
 			await onboard(b, 'Bob');
 			await shot(a, '02_home_empty', width, scheme);

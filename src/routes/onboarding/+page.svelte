@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { t } from '$lib/i18n/index.svelte';
+	import { t, type Key } from '$lib/i18n/index.svelte';
 	import { MIN_PASSPHRASE_LEN } from '$lib/vault/vault';
+	import { estimate, suggestPassphrase } from '$lib/vault/strength';
 	import { vault } from '$lib/vault/vault.svelte';
 	import { createMe } from '$lib/vault/me';
 	import type { HistoryMode } from '$lib/vault/db';
@@ -13,7 +14,16 @@
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 
-	const valid = $derived(name.trim().length > 0 && pw.length >= MIN_PASSPHRASE_LEN && pw === pw2);
+	const strength = $derived(estimate(pw));
+	let showPw = $state(false);
+	const valid = $derived(name.trim().length > 0 && pw.length >= MIN_PASSPHRASE_LEN && pw === pw2 && strength.score >= 1);
+
+	function suggest() {
+		const s = suggestPassphrase();
+		pw = s;
+		pw2 = s;
+		showPw = true;
+	}
 
 	async function submit(e: SubmitEvent) {
 		e.preventDefault();
@@ -48,12 +58,28 @@
 
 		<label class="flex flex-col gap-1">
 			<span class="text-sm font-medium">{t('onbPass')}</span>
-			<input class="field" type="password" bind:value={pw} autocomplete="new-password" required />
+			<input class="field" type={showPw ? 'text' : 'password'} bind:value={pw} autocomplete="new-password" required data-testid="pw1" />
 			<span class="text-muted text-xs">{t('onbPassHint', { min: MIN_PASSPHRASE_LEN })}</span>
 		</label>
+		{#if pw.length > 0}
+			<div class="-mt-2 flex flex-col gap-1" data-testid="strength" data-score={strength.score}>
+				<div class="flex gap-1" aria-hidden="true">
+					{#each [1, 2, 3, 4] as i (i)}
+						<span class="h-1.5 flex-1 rounded-full {i <= strength.score ? (strength.score <= 1 ? 'bg-danger' : strength.score === 2 ? 'bg-warn' : 'bg-accent') : 'bg-surface-2'}"></span>
+					{/each}
+				</div>
+				<p class="text-xs {strength.score <= 1 ? 'text-danger' : strength.score === 2 ? 'text-warn' : 'text-muted'}">
+					{t(`strength${strength.score}` as Key)}{#if strength.hints[0]} · {t(`hint_${strength.hints[0]}` as Key)}{/if}
+				</p>
+			</div>
+		{/if}
+		<div class="-mt-1 flex items-center justify-between gap-3 text-xs">
+			<button type="button" class="text-accent font-medium underline" onclick={suggest} data-testid="suggest">{t('pwSuggest')}</button>
+			<label class="text-muted flex items-center gap-1"><input type="checkbox" bind:checked={showPw} /> {t('pwShow')}</label>
+		</div>
 		<label class="flex flex-col gap-1">
 			<span class="text-sm font-medium">{t('onbPassRepeat')}</span>
-			<input class="field" type="password" bind:value={pw2} autocomplete="new-password" required />
+			<input class="field" type={showPw ? 'text' : 'password'} bind:value={pw2} autocomplete="new-password" required data-testid="pw2" />
 		</label>
 
 		<fieldset class="flex flex-col gap-2">

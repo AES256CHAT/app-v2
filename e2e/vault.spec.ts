@@ -37,6 +37,21 @@ test('onboarding → home → lock → wrong → unlock, guard survives reload',
 	await expect(page).toHaveURL(/\/lock$/);
 });
 
+test('weak passphrases are blocked, a suggested one is accepted', async ({ page }) => {
+	await page.goto('/onboarding');
+	await page.getByLabel(/Anzeigename|display name/i).fill('Carla');
+	await page.getByTestId('pw1').fill('passwort1234');
+	await page.getByTestId('pw2').fill('passwort1234');
+	await expect(page.getByTestId('strength')).toHaveAttribute('data-score', '0');
+	await expect(page.getByRole('button', { name: /Tresor anlegen|Create vault/ })).toBeDisabled();
+	await page.getByTestId('suggest').click();
+	const suggested = await page.getByTestId('pw1').inputValue();
+	expect(suggested.split(' ')).toHaveLength(6);
+	await expect(page.getByTestId('strength')).toHaveAttribute('data-score', /[34]/);
+	await page.getByRole('button', { name: /Tresor anlegen|Create vault/ }).click();
+	await expect(page).toHaveURL(/\/$/);
+});
+
 test('third failure triggers a lockout countdown', async ({ page }) => {
 	await page.goto('/onboarding');
 	await page.getByLabel(/Anzeigename|display name/i).fill('Bob');

@@ -4,6 +4,7 @@
 	import { live } from '$lib/store/live.svelte';
 	import { toast } from '$lib/store/toast.svelte';
 	import { MIN_PASSPHRASE_LEN } from '$lib/vault/vault';
+	import { estimate } from '$lib/vault/strength';
 	import { createBackup, inspectBackup, restoreBackup } from '$lib/vault/backup-service';
 	import { shareOrDownload } from '$lib/transport/share';
 	import type { BackupPayload } from '$lib/vault/backup';
@@ -100,6 +101,7 @@
 		e.preventDefault();
 		pwError = null;
 		if (newPw.length < MIN_PASSPHRASE_LEN) return (pwError = t('onbPassShort', { min: MIN_PASSPHRASE_LEN }));
+		if (estimate(newPw).score < 1) return (pwError = t('strength0'));
 		try {
 			await vault.changePassphrase(oldPw, newPw);
 			oldPw = newPw = '';
