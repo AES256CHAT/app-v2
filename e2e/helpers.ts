@@ -29,20 +29,19 @@ export async function pasteScan(page: Page, text: string) {
 	await page.getByRole('button', { name: /Übernehmen|Apply/ }).click();
 }
 
-/** Guided pairing: A shows first, B scans first. Ends with both on the home list. */
+/** Default pairing: both show their code; B scans first, A scans the reply. Ends on the home list. */
 export async function connect(a: Page, b: Page) {
 	await a.getByTestId('add-contact').click();
-	await a.getByTestId('role-show').click();
 	const offer = await envelope(a);
 
 	await b.getByTestId('add-contact').click();
-	await b.getByTestId('role-scan').click();
+	await b.getByTestId('both-scan').click();
 	await pasteScan(b, offer);
 	await b.getByTestId('confirm').waitFor();
 	await b.getByRole('button', { name: /^Hinzufügen$|^Add$/ }).click();
 	const answer = await envelope(b);
 
-	await a.getByTestId('a-next').click();
+	await a.getByTestId('both-scan').click();
 	await pasteScan(a, answer);
 	await a.getByTestId('done').waitFor();
 	await b.getByTestId('b-done').click();

@@ -33,17 +33,22 @@ for (const scheme of SCHEMES) {
 			await shot(a, '02_home_empty', width, scheme);
 
 			await a.getByTestId('add-contact').click();
-			await shot(a, '03_add_role', width, scheme);
+			await a.getByTestId('envelope-text').waitFor();
+			await a.waitForTimeout(600);
+			await shot(a, '03_add_default', width, scheme);
 			await a.getByTestId('role-mutual').click();
 			await a.getByTestId('envelope-text').waitFor();
 			await a.waitForTimeout(600);
 			await shot(a, '03b_add_mutual', width, scheme);
-			await a.getByRole('button', { name: /Schritt für Schritt|Step by step/ }).click();
+			await a.getByRole('button', { name: /Doch lieber Schritt|Step by step instead/ }).click();
+			await a.getByTestId('role-steps').click();
+			await shot(a, '03_add_role', width, scheme);
 			await a.getByTestId('role-show').click();
 			const offer = await envelope(a);
 			await shot(a, '04_add_a_show', width, scheme);
 
 			await b.getByTestId('add-contact').click();
+			await b.getByTestId('role-steps').click();
 			await b.getByTestId('role-scan').click();
 			await b.getByTestId('paste-field').waitFor({ timeout: 5000 }).catch(() => {});
 			await shot(b, '05_add_b_scan', width, scheme);

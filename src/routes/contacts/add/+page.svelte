@@ -17,6 +17,8 @@
 	import { loadMe, type Me } from '$lib/vault/me';
 
 	type Step =
+		| { s: 'both' } // default: my code on screen, "scan" button (back camera), roles by who scans first
+		| { s: 'both-scan' }
 		| { s: 'role' }
 		| { s: 'mutual' } // both phones face each other: show + scan at once
 		| { s: 'mutual-wait'; contact: ContactRecord } // I answered; the other side finishes
@@ -30,7 +32,7 @@
 
 	let me = $state<Me | null>(null);
 	let offer = $state<OfferRecord | null>(null);
-	let step = $state<Step>({ s: 'role' });
+	let step = $state<Step>({ s: 'both' });
 	let error = $state<string | null>(null);
 	let busy = $state(false);
 
@@ -109,7 +111,7 @@
 				return;
 			}
 			error = e instanceof HandshakeError ? (/expired/.test(e.message) ? t('addErrExpired') : t('addErrGeneric')) : (e as Error).message;
-			step = { s: 'b-scan' };
+			step = { s: 'both' };
 		} finally {
 			busy = false;
 		}
@@ -136,6 +138,9 @@
 
 	const progress = $derived.by(() => {
 		switch (step.s) {
+			case 'both':
+			case 'both-scan':
+				return 1;
 			case 'mutual':
 				return 1;
 			case 'mutual-wait':
@@ -163,7 +168,28 @@
 		{#if progress > 0}<span class="bg-surface-2 text-muted shrink-0 rounded-full px-2 py-0.5 text-xs whitespace-nowrap" data-testid="step">{t('stepOf', { n: progress, total: 3 })}</span>{/if}
 	</header>
 
-	{#if step.s === 'role'}
+	{#if step.s === 'both'}
+		<div class="guide">
+			<p class="you">{t('bothYou')}</p>
+			<p class="them">{t('bothThem')}</p>
+		</div>
+		{#if offer}
+			<QrShow kind="offer" payload={b64uDecode(offer.offer)} />
+		{/if}
+		<button class="btn-primary" onclick={() => (step = { s: 'both-scan' })} data-testid="both-scan">📷 {t('bothScan')}</button>
+		<div class="text-muted flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs">
+			<button class="underline" onclick={newCode}>{t('addNewCode')}</button>
+			<button class="underline" onclick={() => (step = { s: 'mutual' })} data-testid="role-mutual">{t('roleMutual')} ({t('experimental')})</button>
+			<button class="underline" onclick={() => (step = { s: 'role' })} data-testid="role-steps">{t('roleStepByStep')}</button>
+		</div>
+	{:else if step.s === 'both-scan'}
+		<div class="guide">
+			<p class="you">{t('bothScanYou')}</p>
+			<p class="them">{t('bothScanThem')}</p>
+		</div>
+		<QrScan accept={['offer', 'answer']} onenvelope={onEnvelope} />
+		<button class="text-muted self-center text-xs underline" onclick={() => (step = { s: 'both' })}>← {t('bothBack')}</button>
+	{:else if step.s === 'role'}
 		<section class="bg-surface border-border rounded-2xl border p-4">
 			<h2 class="font-semibold">{t('roleHow')}</h2>
 			<HandshakeSketch step={0} />
@@ -199,7 +225,7 @@
 			<QrShow kind="offer" payload={b64uDecode(offer.offer)} coarse compact />
 		{/if}
 		<QrScan accept={['offer', 'answer']} onenvelope={onEnvelope} facing="user" compact />
-		<button class="text-muted self-center text-xs underline" onclick={() => (step = { s: 'role' })}>← {t('mutualBack')}</button>
+		<button class="text-muted self-center text-xs underline" onclick={() => (step = { s: 'both' })}>← {t('mutualBack')}</button>
 	{:else if step.s === 'mutual-wait'}
 		<div class="guide">
 			<p class="you">{t('mutualWaitYou', { name: step.contact.name })}</p>
@@ -241,7 +267,7 @@
 			<p>{t('addConfirmBody', { name: step.contact.name })}</p>
 			<code class="text-muted font-mono text-sm">{step.contact.id.match(/.{4}/g)?.join('-')}</code>
 			<div class="flex justify-center gap-3">
-				<button class="btn-secondary" onclick={() => (step = { s: 'b-scan' })}>{t('cancel')}</button>
+				<button class="btn-secondary" onclick={() => (step = { s: 'both' })}>{t('cancel')}</button>
 				<button class="btn-primary" onclick={() => confirmAdd()} disabled={busy}>{t('addConfirmYes')}</button>
 			</div>
 		</section>

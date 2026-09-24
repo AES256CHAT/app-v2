@@ -29,7 +29,7 @@ export class QrScanner {
 	async start(): Promise<void> {
 		prepare();
 		this.stream = await navigator.mediaDevices.getUserMedia({
-			video: { facingMode: { ideal: this.facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+			video: { facingMode: { ideal: this.facing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
 			audio: false
 		});
 		this.video.srcObject = this.stream;
@@ -65,7 +65,7 @@ export class QrScanner {
 		if (!ctx) return;
 		ctx.drawImage(this.video, 0, 0, w, h);
 		const img = ctx.getImageData(0, 0, w, h);
-		const results = await readBarcodes(img, { formats: ['QRCode'], tryHarder: false, maxNumberOfSymbols: 1 });
+		const results = await readBarcodes(img, { formats: ['QRCode'], tryHarder: this.facing === 'user', tryRotate: true, maxNumberOfSymbols: 1 });
 		for (const r of results) {
 			if (r.text && r.text !== this.lastText) {
 				this.lastText = r.text;

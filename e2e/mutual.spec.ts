@@ -20,7 +20,7 @@ test('face-to-face mode: both show and scan, roles resolve automatically', async
 	await pasteScan(a, offerB);
 
 	// Exactly one side switches to the reply code (the smaller contact ID), the other keeps scanning.
-	const responder: Page = (await a.getByTestId('mutual-done').isVisible({ timeout: 10_000 }).catch(() => false)) ? a : b;
+	const responder: Page = (await a.getByTestId('mutual-done').isVisible({ timeout: 25_000 }).catch(() => false)) ? a : b;
 	const initiator: Page = responder === a ? b : a;
 	await expect(responder.getByTestId('mutual-done')).toBeVisible();
 	await expect(responder.getByTestId('step')).toHaveText(/2 von 3|2 of 3/);

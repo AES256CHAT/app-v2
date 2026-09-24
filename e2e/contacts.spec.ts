@@ -7,8 +7,9 @@ test('guided pairing: A shows, B scans, B shows reply, A scans — safety number
 	await onboard(a, 'Alice');
 	await onboard(b, 'Bob');
 
-	// Role screen explains the dance before anything happens.
+	// Step-by-step path is still reachable from the default screen.
 	await a.getByTestId('add-contact').click();
+	await a.getByTestId('role-steps').click();
 	await expect(a.getByText(/So funktioniert es|How it works/)).toBeVisible();
 	await a.getByTestId('role-show').click();
 	await expect(a.getByTestId('step')).toHaveText(/1 von 3|1 of 3/);
@@ -16,6 +17,7 @@ test('guided pairing: A shows, B scans, B shows reply, A scans — safety number
 	expect(offer.split('\n').length).toBeGreaterThan(1); // multi-frame
 
 	await b.getByTestId('add-contact').click();
+	await b.getByTestId('role-steps').click();
 	await b.getByTestId('role-scan').click();
 	await expect(b.getByTestId('step')).toHaveText(/1 von 3|1 of 3/);
 	await pasteScan(b, offer);
@@ -51,8 +53,7 @@ test('guided pairing: A shows, B scans, B shows reply, A scans — safety number
 
 	// The same reply code cannot be used twice.
 	await a.getByTestId('add-contact').click();
-	await a.getByTestId('role-show').click();
-	await a.getByTestId('a-next').click();
+	await a.getByTestId('both-scan').click();
 	await pasteScan(a, answer);
 	await expect(a.getByRole('alert')).toContainText(/bereits verwendet|already been used/);
 });
