@@ -33,15 +33,15 @@ jobs:
           yes | "$SDKM" --licenses >/dev/null 2>&1 || true
           "$SDKM" "platforms;android-35" "build-tools;35.0.0" >/dev/null
       # Stable debug signing key (repository secret) so test APKs can update each other.
-      - run: |
-          mkdir -p ~/.android
-          echo "$DEBUG_KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+      - run: echo "$DEBUG_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/debug.keystore"
         env:
           DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: npx cap sync android
       - run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug --no-daemon
+        env:
+          DEBUG_KEYSTORE: ${{ runner.temp }}/debug.keystore
       - run: |
           cp android/app/build/outputs/apk/debug/app-debug.apk AES256CHAT-debug.apk
           sha256sum AES256CHAT-debug.apk > AES256CHAT-debug.apk.sha256
