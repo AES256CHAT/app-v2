@@ -1,7 +1,8 @@
 name: Android APK
 
-# Debug APK on every push to main and on manual dispatch. Release signing happens
-# offline (docs/RELEASE_GUIDE.md) — no keystore lives in CI.
+# Signed release APK on every push to main, on tags and on manual dispatch. The
+# distribution keystore lives outside the repository (~/keys on the build box) and is
+# injected as a secret; see docs/RELEASE_GUIDE.md.
 on:
   push:
     branches: [main]
@@ -33,22 +34,26 @@ jobs:
           yes | "$SDKM" --licenses >/dev/null 2>&1 || true
           "$SDKM" "platforms;android-35" "build-tools;35.0.0" >/dev/null
       # Stable debug signing key (repository secret) so test APKs can update each other.
-      - run: echo "$DEBUG_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/debug.keystore"
+      - run: echo "$RELEASE_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
         env:
-          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: npx cap sync android
-      - run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug --no-daemon
+      # Release build type: not debuggable (no run-as, no WebView DevTools socket), signed
+      # with the distribution key. Debug builds are for local development only.
+      - run: chmod +x android/gradlew && cd android && ./gradlew assembleRelease --no-daemon
         env:
-          DEBUG_KEYSTORE: ${{ runner.temp }}/debug.keystore
+          RELEASE_KEYSTORE: ${{ runner.temp }}/release.jks
+          RELEASE_KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASS }}
       - run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk AES256CHAT-debug.apk
-          sha256sum AES256CHAT-debug.apk > AES256CHAT-debug.apk.sha256
+          cp android/app/build/outputs/apk/release/app-release.apk AES256CHAT.apk
+          sha256sum AES256CHAT.apk > AES256CHAT.apk.sha256
+          rm -f "$RUNNER_TEMP/release.jks"
       - uses: actions/upload-artifact@v4
         with:
-          name: AES256CHAT-debug-apk
+          name: AES256CHAT-apk
           path: |
-            AES256CHAT-debug.apk
-            AES256CHAT-debug.apk.sha256
+            AES256CHAT.apk
+            AES256CHAT.apk.sha256
           retention-days: 30

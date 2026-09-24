@@ -31,21 +31,33 @@ meta tag). Nothing else to configure — there is no backend.
 
 ## 3. Android
 
+**Every APK that leaves the building is a release build.** Debug builds are `debuggable`,
+which on Android means `adb run-as` can read the app's private files and the WebView opens a
+DevTools socket that exposes the *unlocked* app over USB — regardless of app settings
+(verified on device). Release builds have neither.
+
+CI (`.github/workflows/android.yml`) builds `assembleRelease` on every push to `main` and
+signs it with the distribution key:
+
+- keystore: `~/keys/aes256chat-release.jks` on the build box (RSA 4096, alias `aes256chat`),
+  passphrase in `~/keys/aes256chat-release.pass` (mode 600) — **back both up offline**;
+  losing the key means existing installs can never be updated again
+- injected as repository secrets `RELEASE_KEYSTORE_B64` / `RELEASE_KEYSTORE_PASS`
+- certificate SHA-256: `F2:C9:30:19:78:45:FE:74:4B:74:18:99:D0:64:00:0E:1F:E5:36:FB:79:92:24:26:45:40:F7:A8:20:4D:E2:E7`
+
+Download the artifact `AES256CHAT-apk` from the run and verify before distributing:
+
 ```bash
-export JAVA_HOME=~/.jdks/jdk-21 ANDROID_HOME=~/Android/Sdk
-npx cap sync android
-cd android && ./gradlew assembleRelease
+gh run download <run-id> --repo AES256CHAT/app-v2 -n AES256CHAT-apk
+java -jar $ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar verify --print-certs AES256CHAT.apk
 ```
 
-Sign and align (or configure `signingConfigs` in `android/app/build.gradle` reading the
-keystore path/password from environment variables — never from the repo):
+Local build (x86 host, Google's AAPT2 does not run on ARM64):
 
 ```bash
-$ANDROID_HOME/build-tools/35.0.0/zipalign -v -p 4 \
-  app/build/outputs/apk/release/app-release-unsigned.apk app-release-aligned.apk
-$ANDROID_HOME/build-tools/35.0.0/apksigner sign --ks ~/keys/aes256chat-release.jks \
-  --ks-key-alias aes256chat --out AES256CHAT-vX.Y.Z.apk app-release-aligned.apk
-$ANDROID_HOME/build-tools/35.0.0/apksigner verify --print-certs AES256CHAT-vX.Y.Z.apk
+export JAVA_HOME=~/.jdks/jdk-21 ANDROID_HOME=~/Android/Sdk
+export RELEASE_KEYSTORE=~/keys/aes256chat-release.jks RELEASE_KEYSTORE_PASS="$(cat ~/keys/aes256chat-release.pass)"
+npx cap sync android && cd android && ./gradlew assembleRelease
 ```
 
 ## 4. Checksums

@@ -17,6 +17,17 @@ android {
         }
     }
     signingConfigs {
+        // Distribution key from CI/env (never in the repo). Release builds are not debuggable:
+        // no run-as, no WebView DevTools socket, no JDWP.
+        release {
+            def ks = System.getenv("RELEASE_KEYSTORE")
+            if (ks != null && file(ks).exists()) {
+                storeFile file(ks)
+                storePassword System.getenv("RELEASE_KEYSTORE_PASS")
+                keyAlias "aes256chat"
+                keyPassword System.getenv("RELEASE_KEYSTORE_PASS")
+            }
+        }
         // Test builds: a stable debug key from CI (DEBUG_KEYSTORE env) so APKs can update each other.
         debug {
             def ks = System.getenv("DEBUG_KEYSTORE")
@@ -32,6 +43,7 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (System.getenv("RELEASE_KEYSTORE") != null) signingConfig signingConfigs.release
         }
     }
 }
