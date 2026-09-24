@@ -111,6 +111,43 @@ describe('vault', () => {
 		await expect(other.unlock(PW)).rejects.toThrow(LockoutError);
 	});
 
+	it('migrates a pre-index-key vault (32-byte secret, plaintext ids) on unlock', async () => {
+		// Build a v1-style vault by hand: plaintext ids, DEK-only wrapped secret.
+		const { aesGcmEncrypt } = await import('$lib/crypto/aead');
+		const { b64uEncode, concat, randomBytes, utf8 } = await import('$lib/crypto/bytes');
+		const { DEFAULT_KDF, deriveKek } = await import('$lib/crypto/kdf');
+		const db = (v as unknown as { db: import('./db').VaultDb }).db;
+		const dek = randomBytes(32);
+		const salt = randomBytes(16);
+		const kek = await deriveKek(PW, salt, DEFAULT_KDF);
+		const iv = randomBytes(12);
+		const wrapped = await aesGcmEncrypt(kek, iv, dek, utf8.encode('AES256CHAT-dek-v1'));
+		await db.meta.put({
+			id: 'v1', version: 1, salt: b64uEncode(salt), kdf: DEFAULT_KDF, wrappedDek: b64uEncode(concat(iv, wrapped)),
+			createdAt: 1, history: 'persist', retentionDays: 7, destroyAfterFails: false, failedAttempts: 0, lockoutUntil: 0
+		});
+		const put = async (table: string, id: string, value: object, k1?: string, ts?: number) => {
+			const riv = randomBytes(12);
+			const ct = await aesGcmEncrypt(dek, riv, utf8.encode(JSON.stringify(value)), utf8.encode(`${table}\u0000${id}`));
+			await db.records.put({ table, id, iv: riv, ct, ...(k1 ? { k1 } : {}), ...(ts ? { ts } : {}) });
+		};
+		await put('contacts', 'CD3GXAWZ64VA073C', { id: 'CD3GXAWZ64VA073C', name: 'Bob' });
+		await put('messages', 'm1', { id: 'm1', body: 'hi' }, 'CD3GXAWZ64VA073C', 1000);
+
+		const fresh = new Vault(db.name);
+		expect(await fresh.init()).toBe('locked');
+		await fresh.unlock(PW);
+		expect(await fresh.get('contacts', 'CD3GXAWZ64VA073C')).toEqual({ id: 'CD3GXAWZ64VA073C', name: 'Bob' });
+		expect((await fresh.list<{ body: string }>('messages', { k1: 'CD3GXAWZ64VA073C' })).map((m) => m.value.body)).toEqual(['hi']);
+		// No plaintext contact id left in the database.
+		const ids = (await db.records.toArray()).map((r) => r.id + (r.k1 ?? ''));
+		expect(ids.join(' ')).not.toContain('CD3GXAWZ64VA073C');
+		// Re-lock/unlock uses the new 64-byte secret.
+		fresh.lock();
+		await fresh.unlock(PW);
+		expect(await fresh.get('contacts', 'CD3GXAWZ64VA073C')).toBeTruthy();
+	});
+
 	it('lockout schedule', () => {
 		expect(lockoutMs(1)).toBe(0);
 		expect(lockoutMs(3)).toBe(30_000);

@@ -186,8 +186,42 @@ export class Vault {
 		// Success: undo the provisional count.
 		await this.db.meta.update('v1', { failedAttempts: 0, lockoutUntil: 0 });
 		this.meta = { ...fresh, failedAttempts: 0, lockoutUntil: 0 };
+		if (secret.length === 32) secret = await this.migrateV1(secret, pw);
 		this.setKeys(secret);
 		this.setStatus('unlocked');
+	}
+
+	/**
+	 * Vaults created before the index-key change hold a 32-byte secret and plaintext record
+	 * ids. Add an index key, re-key every record to HMAC ids (the AAD includes the id, so each
+	 * record is decrypted with its old id and re-encrypted under the new one) and re-wrap.
+	 */
+	private async migrateV1(dek: Uint8Array, pw: string): Promise<Uint8Array> {
+		if (!this.meta) throw new Error('no vault');
+		const idx = randomBytes(32);
+		const secret = concat(dek, idx);
+		const key = (v: string) => b64uEncode(hmac(sha256, idx, utf8.encode(v)).slice(0, 20));
+		const old = await this.db.records.toArray();
+		const rekeyed: EncryptedRecord[] = [];
+		for (const r of old) {
+			const pt = await aesGcmDecrypt(dek, r.iv, r.ct, this.aad(r.table, r.id));
+			const id = key(r.id);
+			const iv = randomBytes(12);
+			const rec: EncryptedRecord = { table: r.table, id, iv, ct: await aesGcmEncrypt(dek, iv, pt, this.aad(r.table, id)) };
+			if (r.k1 !== undefined) rec.k1 = key(r.k1);
+			if (r.ts !== undefined) rec.ts = this.hourly(r.ts);
+			rekeyed.push(rec);
+			wipe(pt);
+		}
+		const salt = randomBytes(16);
+		const patch = { salt: b64uEncode(salt), kdf: DEFAULT_KDF, wrappedDek: await this.wrap(secret, pw, salt, DEFAULT_KDF) };
+		await this.db.transaction('rw', this.db.records, this.db.meta, async () => {
+			await this.db.records.clear();
+			await this.db.records.bulkPut(rekeyed);
+			await this.db.meta.update('v1', patch);
+		});
+		this.meta = { ...this.meta, ...patch };
+		return secret;
 	}
 
 	lock(): void {
