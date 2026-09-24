@@ -6,8 +6,15 @@
 
 	let {
 		accept,
-		onenvelope
-	}: { accept: EnvelopeKind[]; onenvelope: (kind: EnvelopeKind, payload: Uint8Array) => void } = $props();
+		onenvelope,
+		facing = 'environment',
+		compact = false
+	}: {
+		accept: EnvelopeKind[];
+		onenvelope: (kind: EnvelopeKind, payload: Uint8Array) => void;
+		facing?: 'environment' | 'user';
+		compact?: boolean;
+	} = $props();
 
 	let video: HTMLVideoElement;
 	let scanner: QrScanner | null = null;
@@ -47,7 +54,7 @@
 			showPaste = true;
 			return;
 		}
-		scanner = new QrScanner(video, (text) => handleText(text));
+		scanner = new QrScanner(video, (text) => handleText(text), facing === 'user' ? 120 : 150, facing);
 		try {
 			await scanner.start();
 		} catch {
@@ -66,9 +73,9 @@
 </script>
 
 <div class="flex flex-col items-center gap-3">
-	<div class="relative w-[min(320px,80vw)] overflow-hidden rounded-2xl bg-black" class:hidden={cameraError}>
+	<div class="relative overflow-hidden rounded-2xl bg-black {compact ? 'w-[min(230px,58vw)]' : 'w-[min(320px,80vw)]'}" class:hidden={cameraError}>
 		<!-- svelte-ignore a11y_media_has_caption -->
-		<video bind:this={video} class="aspect-square w-full object-cover" muted></video>
+		<video bind:this={video} class="aspect-square w-full object-cover" class:mirror={facing === 'user'} muted></video>
 		<div class="border-accent pointer-events-none absolute inset-6 rounded-xl border-2 opacity-70"></div>
 	</div>
 	{#if progress}
@@ -77,7 +84,7 @@
 	{#if cameraError}<p class="text-warn text-sm">{cameraError}</p>{/if}
 
 	{#if !showPaste}
-		<button class="text-muted text-sm underline" onclick={() => (showPaste = true)}>{t('scanPasteToggle')}</button>
+		<button class="text-muted text-sm underline" class:hidden={compact} onclick={() => (showPaste = true)}>{t('scanPasteToggle')}</button>
 	{:else}
 		<div class="flex w-full max-w-sm flex-col gap-2">
 			<textarea
@@ -93,6 +100,9 @@
 </div>
 
 <style>
+	.mirror {
+		transform: scaleX(-1);
+	}
 	.field {
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);

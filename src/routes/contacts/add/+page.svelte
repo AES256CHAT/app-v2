@@ -18,6 +18,8 @@
 
 	type Step =
 		| { s: 'role' }
+		| { s: 'mutual' } // both phones face each other: show + scan at once
+		| { s: 'mutual-wait'; contact: ContactRecord } // I answered; the other side finishes
 		| { s: 'a-show' }
 		| { s: 'a-scan' }
 		| { s: 'b-scan' }
@@ -45,6 +47,8 @@
 		offer = await contacts.newOffer(me);
 	}
 
+	let mutualBusy = false;
+
 	function onEnvelope(kind: EnvelopeKind, payload: Uint8Array) {
 		error = null;
 		if (!me) return;
@@ -52,6 +56,7 @@
 			if (kind === 'offer') {
 				const c = peekOffer(payload);
 				if (c.id === contactId(bundleOf(me.identity))) return (error = t('addSelf'));
+				if (step.s === 'mutual') return void mutualOffer(c, payload);
 				step = { s: 'confirm', contact: c, offer: payload };
 			} else if (kind === 'answer') {
 				void finalize(payload);
@@ -60,6 +65,35 @@
 			error = e instanceof HandshakeError ? (/expired/.test(e.message) ? t('addErrExpired') : t('addErrGeneric')) : (e as Error).message;
 		}
 	}
+
+	/**
+	 * Mutual mode: both phones show their offer and scan. Whoever has the smaller ID answers
+	 * (shows the reply code), the other keeps scanning and finishes — no roles to pick.
+	 */
+	async function mutualOffer(c: Contact, offerBytes: Uint8Array) {
+		if (!me || mutualBusy) return;
+		const myId = contactId(bundleOf(me.identity));
+		if (myId > c.id) return; // I am the initiator: keep scanning for their reply code
+		mutualBusy = true;
+		try {
+			const r = await contacts.acceptOffer(me, offerBytes, false);
+			step = { s: 'mutual-wait', contact: r.contact };
+			mutualAnswer = r.answer;
+		} catch (e) {
+			if (e instanceof SessionExistsError) {
+				step = { s: 'replace', name: e.contact.name, retry: async () => {
+					const r = await contacts.acceptOffer(me!, offerBytes, true);
+					mutualAnswer = r.answer;
+					step = { s: 'mutual-wait', contact: r.contact };
+				} };
+				return;
+			}
+			error = e instanceof HandshakeError ? t('addErrGeneric') : (e as Error).message;
+		} finally {
+			mutualBusy = false;
+		}
+	}
+	let mutualAnswer = $state<Uint8Array | null>(null);
 
 	async function confirmAdd(replace = false) {
 		if (!me || step.s !== 'confirm') return;
@@ -102,6 +136,10 @@
 
 	const progress = $derived.by(() => {
 		switch (step.s) {
+			case 'mutual':
+				return 1;
+			case 'mutual-wait':
+				return 2;
 			case 'a-show':
 			case 'b-scan':
 			case 'confirm':
@@ -135,6 +173,11 @@
 				<li>{t('roleStep3')}</li>
 			</ol>
 		</section>
+		<button class="role accent" onclick={() => (step = { s: 'mutual' })} data-testid="role-mutual">
+			<span class="text-2xl">🤝</span>
+			<span><b>{t('roleMutual')}</b><br /><span class="text-muted text-sm">{t('roleMutualHint')}</span></span>
+		</button>
+		<p class="text-muted text-center text-xs">{t('roleOr')}</p>
 		<p class="text-center font-medium">{t('roleQuestion')}</p>
 		<div class="grid gap-3">
 			<button class="role" onclick={() => (step = { s: 'a-show' })} data-testid="role-show">
@@ -147,6 +190,25 @@
 			</button>
 		</div>
 		<p class="text-muted text-center text-xs">{t('roleEither')}</p>
+	{:else if step.s === 'mutual'}
+		<div class="guide">
+			<p class="you">{t('mutualYou')}</p>
+			<p class="them">{t('mutualHint')}</p>
+		</div>
+		{#if offer}
+			<QrShow kind="offer" payload={b64uDecode(offer.offer)} coarse compact />
+		{/if}
+		<QrScan accept={['offer', 'answer']} onenvelope={onEnvelope} facing="user" compact />
+		<button class="text-muted self-center text-xs underline" onclick={() => (step = { s: 'role' })}>← {t('mutualBack')}</button>
+	{:else if step.s === 'mutual-wait'}
+		<div class="guide">
+			<p class="you">{t('mutualWaitYou', { name: step.contact.name })}</p>
+			<p class="them">{t('mutualWaitHint')}</p>
+		</div>
+		{#if mutualAnswer}<QrShow kind="answer" payload={mutualAnswer} coarse compact />{/if}
+		<button class="btn-primary" onclick={() => step.s === 'mutual-wait' && (step = { s: 'done', contact: step.contact, side: 'b' })} data-testid="mutual-done">
+			{t('bShowDone', { name: step.contact.name })} ✓
+		</button>
 	{:else if step.s === 'a-show'}
 		<div class="guide">
 			<HandshakeSketch step={1} />
@@ -225,7 +287,8 @@
 		border-radius: 1rem;
 		padding: 1rem;
 	}
-	.role:active {
+	.role:active,
+	.role.accent {
 		border-color: var(--color-accent);
 	}
 	.guide {

@@ -11,8 +11,11 @@ export interface QrFrames {
 	images: string[]; // data: URLs
 }
 
-export async function qrFrames(kind: EnvelopeKind, payload: Uint8Array, size = 320): Promise<QrFrames> {
-	const texts = encodeEnvelope(kind, payload, QR_FRAME_CHARS);
+/** Coarser frames for phone-to-phone scanning with fixed-focus front cameras. */
+export const QR_FRAME_CHARS_COARSE = 280;
+
+export async function qrFrames(kind: EnvelopeKind, payload: Uint8Array, size = 320, chars = QR_FRAME_CHARS): Promise<QrFrames> {
+	const texts = encodeEnvelope(kind, payload, chars);
 	const images = await Promise.all(
 		texts.map((t) => QRCode.toDataURL(t, { errorCorrectionLevel: 'L', margin: 1, width: size }))
 	);

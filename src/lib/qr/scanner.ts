@@ -22,13 +22,14 @@ export class QrScanner {
 	constructor(
 		private video: HTMLVideoElement,
 		private onText: (text: string) => void,
-		private intervalMs = 150
+		private intervalMs = 150,
+		private facing: 'environment' | 'user' = 'environment'
 	) {}
 
 	async start(): Promise<void> {
 		prepare();
 		this.stream = await navigator.mediaDevices.getUserMedia({
-			video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+			video: { facingMode: { ideal: this.facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
 			audio: false
 		});
 		this.video.srcObject = this.stream;

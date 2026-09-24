@@ -34,6 +34,11 @@ for (const scheme of SCHEMES) {
 
 			await a.getByTestId('add-contact').click();
 			await shot(a, '03_add_role', width, scheme);
+			await a.getByTestId('role-mutual').click();
+			await a.getByTestId('envelope-text').waitFor();
+			await a.waitForTimeout(600);
+			await shot(a, '03b_add_mutual', width, scheme);
+			await a.getByRole('button', { name: /Schritt für Schritt|Step by step/ }).click();
 			await a.getByTestId('role-show').click();
 			const offer = await envelope(a);
 			await shot(a, '04_add_a_show', width, scheme);
