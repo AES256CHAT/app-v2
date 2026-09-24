@@ -15,4 +15,11 @@ public class MainActivity extends BridgeActivity {
         // unlocked app's JS context over USB (chrome://inspect). Never, in any build.
         WebView.setWebContentsDebuggingEnabled(false);
     }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        // The bridge (created after onCreate) re-enables it for debuggable builds; force off again.
+        WebView.setWebContentsDebuggingEnabled(false);
+    }
 }
